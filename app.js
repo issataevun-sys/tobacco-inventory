@@ -17,53 +17,50 @@ function persist(){return new Promise(function(resolve,reject){
  tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)};
 })}
 
-var bridgeWindow=null,bridgeFrame=null,bridgeSession='',bridgePending=new Map(),bridgeInit=null;
-function uuid(){
- if(self.crypto&&crypto.randomUUID)return crypto.randomUUID();
- var bytes=new Uint8Array(16);crypto.getRandomValues(bytes);
- return Array.from(bytes).map(function(x){return x.toString(16).padStart(2,'0')}).join('');
-}
-function ensureBridge(){
- if(bridgeInit)return bridgeInit;
- bridgeSession=uuid();
- bridgeInit=new Promise(function(resolve,reject){
-  var timeout=setTimeout(function(){reject(Error('Не удалось подключиться к Google Apps Script. Проверьте адрес и доступ к веб-приложению.'))},20000);
-  function onReady(event){
-   var d=event.data||{};
-   if(d.type!=='cr-inventory-bridge'||d.session!==bridgeSession||!d.ready)return;
-   if(!/^https:\/\/(?:[a-z0-9-]+\.)*(?:googleusercontent\.com|google\.com)(?::443)?$/i.test(event.origin))return;
-   bridgeWindow=event.source;
-   clearTimeout(timeout);window.removeEventListener('message',onReady);resolve();
+
+var readCounter=0;
+function readActive(){
+ return new Promise(function(resolve,reject){
+  if(!navigator.onLine){reject(Error('Нет интернета'));return}
+  var callback='__crInvCallback_'+Array.from(crypto.getRandomValues(new Uint8Array(16)),function(x){return x.toString(16).padStart(2,'0')}).join('');
+  var script=document.createElement('script'),complete=false;
+  var timer=setTimeout(function(){finish(Error('Нет ответа от Google Apps Script. Проверьте новую версию развёртывания GAS.'))},20000);
+  function finish(err,result){
+   if(complete)return;complete=true;clearTimeout(timer);script.remove();delete window[callback];
+   if(err)reject(err);else resolve(result);
   }
-  window.addEventListener('message',onReady);
-  bridgeFrame=document.createElement('iframe');
-  bridgeFrame.title='Синхронизация инвентаризации';
-  bridgeFrame.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0';
-  bridgeFrame.src=state.bridgeUrl+'?bridge=1&session='+encodeURIComponent(bridgeSession);
-  document.body.appendChild(bridgeFrame);
- }).catch(function(e){bridgeInit=null;if(bridgeFrame)bridgeFrame.remove();bridgeFrame=null;bridgeWindow=null;throw e});
- return bridgeInit;
+  window[callback]=function(body){
+   if(!body||body.ok!==true)finish(Error(String(body&&body.error||'Ошибка Google Apps Script')));
+   else finish(null,body.result);
+  };
+  script.onerror=function(){finish(Error('Не удалось прочитать данные из GAS. Проверьте адрес /exec и доступ.'))};
+  script.src=state.bridgeUrl+'?action=active&callback='+encodeURIComponent(callback)+'&key='+encodeURIComponent(state.secret)+'&t='+Date.now()+'_'+(++readCounter);
+  document.head.appendChild(script);
+ });
 }
-window.addEventListener('message',function(event){
- var data=event.data||{};
- if(!bridgeWindow||event.source!==bridgeWindow||data.session!==bridgeSession||data.type!=='cr-inventory-bridge'||!data.id)return;
- var pending=bridgePending.get(data.id);
- if(!pending)return;
- bridgePending.delete(data.id);clearTimeout(pending.timer);
- if(data.ok===true)pending.resolve(data.result);
- else pending.reject(Error(String(data.error||'Ошибка GAS')));
-});
+function delay(ms){return new Promise(function(ok){setTimeout(ok,ms)})}
 async function rpc(method,payload){
  if(!navigator.onLine)throw Error('Нет интернета');
- if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1}[method])throw Error('Недоступная операция');
  if(!state.bridgeUrl)throw Error('Укажите ссылку Google Apps Script');
- await ensureBridge();
- return new Promise(function(resolve,reject){
-  var id=uuid();
-  var timer=setTimeout(function(){bridgePending.delete(id);reject(Error('Превышено время ответа Google Apps Script'))},30000);
-  bridgePending.set(id,{resolve:resolve,reject:reject,timer:timer});
-  bridgeWindow.postMessage({type:'cr-inventory-request',session:bridgeSession,id:id,method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret})},'*');
- });
+ if(method==='crStaffTobaccoActive')return readActive();
+ if(method!=='crStaffTobaccoSave'&&method!=='crStaffTobaccoCreate')throw Error('Недоступная операция');
+ // GAS accepts text/plain POST. No CORS-readable response: always verify via authenticated reread.
+ var data=Object.assign({},payload||{},{deviceSecret:state.secret});
+ try{
+  await fetch(state.bridgeUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
+   body:JSON.stringify({method:method,payload:data}),cache:'no-store',redirect:'follow'});
+ }catch(e){
+  // An opaque redirected response can fail even when the server has applied the operation.
+  // Never retry a potentially completed write blindly; check server state first.
+ }
+ var result=null;
+ for(var attempt=0;attempt<7;attempt++){
+  if(attempt)await delay(900+attempt*350);
+  try{result=await readActive()}catch(e){if(attempt===6)throw e;continue}
+  if(method==='crStaffTobaccoSave'&&sameZone(result,data))return {ok:true,verified:true};
+  if(method==='crStaffTobaccoCreate'&&result&&result.active&&result.day===data.day)return {ok:true,verified:true};
+ }
+ throw Error('Сервер не подтвердил сохранение. Данные остаются локально; повторное сохранение не требуется.');
 }
 function clone(obj){return JSON.parse(JSON.stringify(obj))}
 function value(v){return v===null||v===undefined||v===''?null:Number(v)}
@@ -181,7 +178,7 @@ async function start(){
    document.getElementById('activate').onclick=async function(){
     var key=document.getElementById('key').value.trim();
      var bridge=document.getElementById('bridgeUrl').value.trim().replace(/\/+$/,'');
-     if(!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(bridge)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Укажите правильный HTTPS-адрес';return}
+     if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(bridge)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Укажите ссылку GAS, оканчивающуюся на /exec';return}
      state.bridgeUrl=bridge;
     if(!/^[A-Za-z0-9]{8}$/.test(key)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Введите 8 латинских букв и цифр';return}
     state.secret=key;
