@@ -28,8 +28,8 @@ async function rpc(method,payload){
    headers:{'Content-Type':'text/plain;charset=utf-8'},
    body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret})}),
    cache:'no-store',signal:controller.signal});
-  if(!response.ok)throw Error('Сервер синхронизации: HTTP '+response.status);
-  const result=await response.json();
+  const result=await response.json().catch(function(){return null});
+  if(!response.ok)throw Error(String(result&&result.error||'Сервер синхронизации: HTTP '+response.status));
   if(!result||result.ok!==true)throw Error(String(result&&result.error||'Ошибка сервера'));
   return result.result;
  }catch(e){throw Error(e&&e.name==='AbortError'?'Превышено время ответа сервера':String(e&&e.message||e))}
