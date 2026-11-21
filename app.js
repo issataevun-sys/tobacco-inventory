@@ -1,16 +1,19 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const DB='tobacco-inventory-scanner-v1';
-let db=null,scanner=null,scanning=false,stopPending=false;
+let db=null,scanner=null,scanning=false,stopPending=false,scanLocked=false;
 const setStatus=t=>{$('status').textContent=t};
 const makeId=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(16).slice(2);
 function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('records',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 function transaction(mode,fn){return new Promise((resolve,reject)=>{const tx=db.transaction('records',mode),store=tx.objectStore('records');let req;try{req=fn(store)}catch(e){reject(e);return}tx.oncomplete=()=>resolve(req?.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}
 function normalizeCode(raw){
- const s=String(raw||'').trim();
+ const s=String(raw||'').replace(/^\s+|\s+$/g,'');
  // GS1 element string: AI 01 + 14-digit GTIN, often preceded by symbology identifier ]d2.
- const cleaned=s.replace(/^\]d[12]/,'');
+ const cleaned=s.replace(/^\]d[12]/,'').replace(/^\]Q3/,'');
  let match=cleaned.match(/(?:^|\x1d|\()01\)?(\d{14})/);
+ if(match)return match[1];
+ // GS1 human-readable text sometimes separates AI (01) and GTIN with spaces.
+ match=cleaned.match(/\(01\)\s*(\d{14})/);
  if(match)return match[1];
  // GS1 Data Matrix raw payload can start with 01 without separators.
  if(/^01\d{14}/.test(cleaned))return cleaned.slice(2,16);
@@ -32,10 +35,16 @@ async function rows(){const all=await transaction('readonly',s=>s.getAll());retu
 async function refresh(){const all=await rows();$('count').textContent=String(all.length);$('items').replaceChildren(...all.map(renderRow))}
 function clearEntry(){$('code').value='';$('flavor').value='';$('weight').value=''}
 function scanFound(raw){
+ if(scanLocked)return;
  const code=normalizeCode(raw);
- if(!code||!validGtin(code)){$('result').textContent='Код считан, но GTIN не найден или неверная контрольная цифра. Можно ввести вручную.';return}
- $('code').value=code;$('result').textContent='Код распознан: '+code;
- $('weight').focus();stopScanner();
+ if(!code||!validGtin(code)){
+  // Do not silently discard a successfully decoded Data Matrix: show a safe preview for diagnosis.
+  $('result').textContent='Код распознан, но GTIN не найден. Начало данных: '+String(raw).replace(/[\x00-\x1f\x7f]/g,' ').slice(0,35);
+  return;
+ }
+ scanLocked=true;
+ $('code').value=code;$('result').textContent='GTIN определён: '+code;
+ stopScanner().then(()=>$('weight').focus());
 }
 async function loadDecoder(){
  if(window.Html5Qrcode)return;
@@ -45,16 +54,23 @@ async function loadDecoder(){
  try{const cache=await caches.open('tobacco-decoder-v1');await cache.add(script.src)}catch(_){}
 }
 async function startScanner(){
- if(scanning)return;
+ if(scanning||stopPending)return;
+ scanLocked=false;
  try{
   $('start').disabled=true;setStatus('Запуск камеры…');
   await loadDecoder();
   if(!window.Html5Qrcode)throw Error('Сканер не загрузился');
   if(!navigator.mediaDevices?.getUserMedia)throw Error('Нет доступа к камере: откройте PWA по HTTPS');
   $('scanner').hidden=false;
-  const formats=[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.DATA_MATRIX,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A];
-  scanner=new Html5Qrcode('reader',{formatsToSupport:formats,verbose:false});
-  await scanner.start({facingMode:'environment'},{fps:12,qrbox:{width:230,height:180},aspectRatio:1.333},scanFound,()=>{});
+  const formats=[Html5QrcodeSupportedFormats.DATA_MATRIX,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A];
+  // Explicit ZXing decoder: experimental native BarcodeDetector can omit Data Matrix.
+  scanner=new Html5Qrcode('reader',{formatsToSupport:formats,verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:false}});
+  // Square viewfinder suits tiny 2D codes; 1080p source improves fine-module resolution.
+  const viewport=Math.min(Math.max(window.innerWidth-50,220),440);
+  const side=Math.min(280,Math.max(170,viewport-45));
+  await scanner.start({facingMode:'environment'},{fps:15,qrbox:{width:side,height:side},aspectRatio:1,videoConstraints:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}},scanFound,()=>{});
+  const video=document.querySelector('#reader video');
+  if(video){video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');video.muted=true;video.controls=false;}
   scanning=true;$('stop').disabled=false;setStatus('Наведите камеру на штрихкод или Data Matrix');
  }catch(e){setStatus('Камера: '+(e?.message||e));$('scanner').hidden=true;scanner=null}
  finally{$('start').disabled=false}
