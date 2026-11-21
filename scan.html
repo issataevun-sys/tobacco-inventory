@@ -1,0 +1,11 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Cocktail Room · Сканер</title><style>
+:root{font:15px -apple-system,BlinkMacSystemFont,Arial,sans-serif;color:#202024;background:#f6f6f7}
+*{box-sizing:border-box}body{margin:0;padding:20px 14px 30px}main{max-width:460px;margin:auto}
+h1{font-size:20px;margin:0 0 6px}.muted{font-size:12px;color:#676773}
+.card{background:white;padding:15px;border-radius:16px;margin-top:14px}
+#reader{min-height:250px;background:#171719;border-radius:12px;overflow:hidden}#reader video{object-fit:cover!important}
+button{background:#232327;color:white;border:0;border-radius:10px;padding:12px 15px;font:600 14px inherit;min-height:44px;cursor:pointer}
+.row{display:flex;gap:8px;margin-top:12px}.row button{flex:1}
+#status{font-size:13px;line-height:1.5;margin:12px 0;overflow-wrap:anywhere}
+input{width:100%;border:1px solid #dedee3;border-radius:9px;padding:11px;font:inherit}
+</style></head><body><main><h1>Сканер табака</h1><div class="muted">Cocktail Room · Data Matrix / EAN-13 · v1.2.4</div><section class="card"><div id="reader"></div><p id="status">Нажмите «Включить камеру»</p><div class="row"><button id="start">Включить камеру</button><button id="stop">Остановить</button></div><label class="muted" for="manual">Ручной ввод GTIN</label><input id="manual" inputmode="numeric" placeholder="GTIN"><div class="row"><button id="send">Передать в инвентаризацию</button></div></section></main><script src="./scan-app.js" defer></script></body></html>
