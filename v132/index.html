@@ -374,7 +374,7 @@ window.crStaffTobaccoFactory=function(api){
   if(busy||scanOpen||barcodeOverlay||!model)return;
   // Refreshable select is built from the complete Flavors catalog, not only this inventory.
   var flavors=(model.flavors||[]).filter(function(f){return f.id&&f.name}).sort(function(a,b){return label(a).localeCompare(label(b),'ru')});
-  if(!flavors.length){message('Справочник вкусов ещё не получен. Обновите страницу после развёртывания GAS.');return}
+  if(!flavors.length){window.alert('Справочник вкусов ещё не получен. Обновите GAS и затем обновите приложение.');return}
   capture();
   scanMode='barcode';scanOpen=true;scanLocked=false;
   var overlay=document.createElement('div');overlay.className='tbDialogBackdrop tbBarcodeBackdrop';barcodeOverlay=overlay;
