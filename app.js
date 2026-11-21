@@ -18,49 +18,22 @@ function persist(){return new Promise(function(resolve,reject){
 })}
 
 
-var readCounter=0;
-function readActive(){
- return new Promise(function(resolve,reject){
-  if(!navigator.onLine){reject(Error('Нет интернета'));return}
-  var callback='__crInvCallback_'+Array.from(crypto.getRandomValues(new Uint8Array(16)),function(x){return x.toString(16).padStart(2,'0')}).join('');
-  var script=document.createElement('script'),complete=false;
-  var timer=setTimeout(function(){finish(Error('Нет ответа от Google Apps Script. Проверьте новую версию развёртывания GAS.'))},20000);
-  function finish(err,result){
-   if(complete)return;complete=true;clearTimeout(timer);script.remove();delete window[callback];
-   if(err)reject(err);else resolve(result);
-  }
-  window[callback]=function(body){
-   if(!body||body.ok!==true)finish(Error(String(body&&body.error||'Ошибка Google Apps Script')));
-   else finish(null,body.result);
-  };
-  script.onerror=function(){finish(Error('Не удалось прочитать данные из GAS. Проверьте адрес /exec и доступ.'))};
-  script.src=state.bridgeUrl+'?action=active&callback='+encodeURIComponent(callback)+'&key='+encodeURIComponent(state.secret)+'&t='+Date.now()+'_'+(++readCounter);
-  document.head.appendChild(script);
- });
-}
-function delay(ms){return new Promise(function(ok){setTimeout(ok,ms)})}
 async function rpc(method,payload){
  if(!navigator.onLine)throw Error('Нет интернета');
- if(!state.bridgeUrl)throw Error('Укажите ссылку Google Apps Script');
- if(method==='crStaffTobaccoActive')return readActive();
- if(method!=='crStaffTobaccoSave'&&method!=='crStaffTobaccoCreate')throw Error('Недоступная операция');
- // GAS accepts text/plain POST. No CORS-readable response: always verify via authenticated reread.
- var data=Object.assign({},payload||{},{deviceSecret:state.secret});
+ if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1}[method])throw Error('Недоступная операция');
+ if(!state.bridgeUrl||!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(state.bridgeUrl))throw Error('Не указан адрес сервера синхронизации');
+ const controller=new AbortController(),timer=setTimeout(function(){controller.abort()},25000);
  try{
-  await fetch(state.bridgeUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
-   body:JSON.stringify({method:method,payload:data}),cache:'no-store',redirect:'follow'});
- }catch(e){
-  // An opaque redirected response can fail even when the server has applied the operation.
-  // Never retry a potentially completed write blindly; check server state first.
- }
- var result=null;
- for(var attempt=0;attempt<7;attempt++){
-  if(attempt)await delay(900+attempt*350);
-  try{result=await readActive()}catch(e){if(attempt===6)throw e;continue}
-  if(method==='crStaffTobaccoSave'&&sameZone(result,data))return {ok:true,verified:true};
-  if(method==='crStaffTobaccoCreate'&&result&&result.active&&result.day===data.day)return {ok:true,verified:true};
- }
- throw Error('Сервер не подтвердил сохранение. Данные остаются локально; повторное сохранение не требуется.');
+  const response=await fetch(state.bridgeUrl,{method:'POST',mode:'cors',
+   headers:{'Content-Type':'text/plain;charset=utf-8'},
+   body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret})}),
+   cache:'no-store',signal:controller.signal});
+  if(!response.ok)throw Error('Сервер синхронизации: HTTP '+response.status);
+  const result=await response.json();
+  if(!result||result.ok!==true)throw Error(String(result&&result.error||'Ошибка сервера'));
+  return result.result;
+ }catch(e){throw Error(e&&e.name==='AbortError'?'Превышено время ответа сервера':String(e&&e.message||e))}
+ finally{clearTimeout(timer)}
 }
 function clone(obj){return JSON.parse(JSON.stringify(obj))}
 function value(v){return v===null||v===undefined||v===''?null:Number(v)}
@@ -178,7 +151,7 @@ async function start(){
    document.getElementById('activate').onclick=async function(){
     var key=document.getElementById('key').value.trim();
      var bridge=document.getElementById('bridgeUrl').value.trim().replace(/\/+$/,'');
-     if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(bridge)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Укажите ссылку GAS, оканчивающуюся на /exec';return}
+     if(!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(bridge)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Укажите HTTPS-адрес Cloudflare Worker';return}
      state.bridgeUrl=bridge;
     if(!/^[A-Za-z0-9]{8}$/.test(key)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Введите 8 латинских букв и цифр';return}
     state.secret=key;
