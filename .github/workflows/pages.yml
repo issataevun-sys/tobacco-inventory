@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify PWA assets
-        run: test -f index.html && test -f app.js && test -f sw.js && test -f manifest.webmanifest
+        run: test -f index.html && test -f app.js && test -f sw.js && test -f manifest.webmanifest && test -f icon.png && test -f v132/icon.png
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
