@@ -1,17 +1,22 @@
-# Cocktail Room · Инвентаризация PWA v1.2.2
+# Cocktail Room — Инвентаризация PWA v1.3.0
 
-Публичная PWA: `https://issataevun-sys.github.io/tobacco-inventory/`.
+Одно PWA на iPhone: инвентаризация и встроенный Data Matrix. Данные — существующий GAS и Google Sheets. Доступ к таблицам у Worker отсутствует: он передаёт JSON в существующий GAS.
 
-Основа — существующее приложение `apps/inventory-iphone` (Сервис, Склад, закрытые пачки, уголь, мундштуки, ручной ввод, IndexedDB, очередь операций). Сканер Data Matrix использует проверенный вариант из Tobacco Inventory v1.0.2. GTIN сопоставляется с `TobaccoBarcodes` в действующей базе TOBACCO.
+**PWA:** https://issataevun-sys.github.io/tobacco-inventory/
 
-## Без Cloudflare и дополнительных серверов
+## Однократная настройка
 
-1. В **существующем отдельном проекте инвентаризации GAS** обновить только `Code.gs` и `Tobacco.gs` из ветки `cocktail-room-2/develop/apps/inventory-iphone`. Не трогать GAS STAFF и MANAGEMENT.
-2. Сохранить Script Properties как раньше: `CR_TEMP_DEVICE_SECRET`, `CR_TEMP_TOBACCO_DB_ID`, `CR_TEMP_CATALOG_ID`.
-3. Развернуть новую версию GAS Web App с запуском от владельца, URL `https://script.google.com/macros/s/.../exec`. Для iframe-доступа вне домена Google Web App должен разрешать загрузку без интерактивного Google-входа; **публичное развертывание с одним 8-символьным ключом — временный тестовый риск**, поэтому не передавайте адрес и ключ посторонним.
-4. Открыть PWA, ввести URL GAS `.../exec` и код активации. PWA использует iframe и `google.script.run`, не применяет сторонний Worker. Если Chrome/Safari блокирует iframe или сторонние cookies, прямое соединение может не работать; проверить на iPhone.
-5. Подтвердить: загрузка активной инвентаризации → сканирование → определение вкуса → вес с тарой → «Сохранить» → синхронизация с TOBACCO.
+1. В отдельном проекте **GAS инвентаризации** обновить `Code.gs` и `Tobacco.gs` из `cocktail-room-2/develop/apps/inventory-iphone`, сохранить и развернуть **новую версию** веб-приложения (исполняется от владельца; доступ по ссылке для Worker). Старые свойства `CR_TEMP_DEVICE_SECRET`, `CR_TEMP_TOBACCO_DB_ID`, `CR_TEMP_CATALOG_ID` сохраняются.
+2. В Cloudflare → **Workers & Pages** → **Create Worker** создать Worker и заменить его код файлом [worker.js](./worker.js). В **Settings → Variables and Secrets** добавить текстовую переменную `GAS_URL` с полным адресом развёртывания GAS вида `https://script.google.com/macros/s/.../exec`. Адрес не надо вписывать в код.
+3. **Deploy** Worker. Его адрес вида `https://...workers.dev` ввести в поле «Сервер синхронизации» внутри PWA, затем ввести прежний 8-символьный ключ устройства.
+4. Проверить реальное чтение инвентаризации, сканирование Data Matrix, сохранение веса, перезагрузку и повторную загрузку веса из Google Sheets.
 
-Код не отправляет GTIN в сторонние сервисы. Декодер сканера загружается с CDN при первом запуске и затем кешируется. Весь GAS и ключи остаются только в приватном проекте.
+Cloudflare не используется в основном STAFF/MANAGEMENT. Нет отдельных сканеров, окон или дополнительных баз.
 
-PWA оболочка — статические `index.html`, `app.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`. GitHub Pages публикуется из репозитория `issataevun-sys/tobacco-inventory`. Изменения основной системы выполняются только в ветке `develop`.
+## Безопасность и ограничения
+
+- Worker допускает запросы браузера только с `https://issataevun-sys.github.io`, только три операции: `crStaffTobaccoActive`, `crStaffTobaccoCreate`, `crStaffTobaccoSave`. Дополнительная проверка 8-символьного ключа выполняется в GAS.
+- Не публикуйте действующий ключ в репозитории, настройках Worker или скриншотах.
+- Текущая схема с коротким ключом — временный тестовый доступ, не публичная авторизация для многих пользователей.
+- Не утверждать, что серверное сохранение работает, пока не пройдён реальный тест: GitHub сам не может развернуть Worker в чужой Cloudflare-учётной записи.
+- PWA использует IndexedDB и очередь офлайн-записей; библиотека декодирования камеры кешируется после первой загрузки.
