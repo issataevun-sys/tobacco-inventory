@@ -31,7 +31,7 @@ function ensureBridge(){
   function onReady(event){
    var d=event.data||{};
    if(d.type!=='cr-inventory-bridge'||d.session!==bridgeSession||!d.ready)return;
-   if(!/^https:\/\/(?:script\.googleusercontent\.com|script\.google\.com)(?::443)?$/.test(event.origin))return;
+   if(!/^https:\/\/(?:[a-z0-9-]+\.)*(?:googleusercontent\.com|google\.com)(?::443)?$/i.test(event.origin))return;
    bridgeWindow=event.source;
    clearTimeout(timeout);window.removeEventListener('message',onReady);resolve();
   }
