@@ -7,18 +7,17 @@ const makeId=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Ma
 function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('records',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 function transaction(mode,fn){return new Promise((resolve,reject)=>{const tx=db.transaction('records',mode),store=tx.objectStore('records');let req;try{req=fn(store)}catch(e){reject(e);return}tx.oncomplete=()=>resolve(req?.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}
 function normalizeCode(raw){
- const s=String(raw??'').trim();
- // Barcode readers can return GS1 Data Matrix with a ]d2 identifier,
- // parentheses, ASCII group separators, or escaped AI notation.
- const cleaned=s.replace(/^\\]d[12]/,'').replace(/^\\]Q3/,'');
+ const cleaned=String(raw??'').replace(/^\]d[12]/,'').replace(/^\]Q3/,'').trim();
  const candidates=[];
- const add=x=>{if(x&&/^\\d{14}$/.test(x)&&!candidates.includes(x))candidates.push(x)};
- // GS1 AI 01 can appear after symbology/control metadata.
- for(const match of cleaned.matchAll(/(?:\\(01\\)|01)\\s*(\\d{14})/g))add(match[1]);
- // Ordinary barcode values are accepted without treating serial digits as product IDs.
- const trimmed=cleaned.replace(/^\\s+|\\s+$/g,'');
- if(/^\\d{13}$/.test(trimmed))add('0'+trimmed);
- if(/^\\d{14}$/.test(trimmed))add(trimmed);
+ const add=value=>{if(/^\d{14}$/.test(value)&&!candidates.includes(value))candidates.push(value)};
+ // Verified legacy parser from datamatrix-lab1: Kazakhstan tobacco marking
+ // is 29 characters: 14-digit GTIN, 7-character serial, 8-character check.
+ if(/^\d{14}[\s\S]{15}$/.test(cleaned))add(cleaned.slice(0,14));
+ // Standard GS1 Data Matrix with AI 01; permit prefix and GS separators.
+ for(const match of cleaned.matchAll(/(?:\(01\)|(?:^|\x1d)01)\s*(\d{14})/g))add(match[1]);
+ if(/^01\d{14}/.test(cleaned))add(cleaned.slice(2,16));
+ if(/^\d{13}$/.test(cleaned))add('0'+cleaned);
+ if(/^\d{14}$/.test(cleaned))add(cleaned);
  return candidates.find(validGtin)||null;
 }
 function validGtin(s){
@@ -37,20 +36,21 @@ function clearEntry(){$('code').value='';$('flavor').value='';$('weight').value=
 let lastUnrecognized='';
 function scanFound(raw){
  if(scanLocked)return;
- const code=normalizeCode(raw);
+ const decoded=String(raw??'');
+ const code=normalizeCode(decoded);
  if(!code){
-  scanLocked=true;
-  lastUnrecognized=String(raw??'');
-  const preview=lastUnrecognized.replace(/[\\x00-\\x1f\\x7f]/g,' ').slice(0,64);
-  $('result').textContent='Data Matrix считан, но GTIN (01) не определён. Данные: '+preview;
+  // Short, accidental decodes are not tobacco labels; leave camera open.
+  if(decoded.length<13)return;
+  lastUnrecognized=decoded;
+  $('result').textContent='Код прочитан, но GTIN не выделен. Данные: '+decoded.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,64);
   $('copyRaw').hidden=false;
-  stopScanner();
-  setStatus('Код прочитан. Нажмите «Копировать данные кода» и пришлите их формат — проверю извлечение GTIN.');
   return;
  }
  scanLocked=true;
+ lastUnrecognized='';
  $('copyRaw').hidden=true;
- $('code').value=code;$('result').textContent='GTIN определён: '+code;
+ $('code').value=code;
+ $('result').textContent='GTIN определён: '+code;
  stopScanner().then(()=>$('weight').focus());
 }
 async function loadDecoder(){
