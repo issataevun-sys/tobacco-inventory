@@ -7,19 +7,19 @@ const makeId=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Ma
 function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('records',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 function transaction(mode,fn){return new Promise((resolve,reject)=>{const tx=db.transaction('records',mode),store=tx.objectStore('records');let req;try{req=fn(store)}catch(e){reject(e);return}tx.oncomplete=()=>resolve(req?.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}
 function normalizeCode(raw){
- const s=String(raw||'').replace(/^\s+|\s+$/g,'');
- // GS1 element string: AI 01 + 14-digit GTIN, often preceded by symbology identifier ]d2.
- const cleaned=s.replace(/^\]d[12]/,'').replace(/^\]Q3/,'');
- let match=cleaned.match(/(?:^|\x1d|\()01\)?(\d{14})/);
- if(match)return match[1];
- // GS1 human-readable text sometimes separates AI (01) and GTIN with spaces.
- match=cleaned.match(/\(01\)\s*(\d{14})/);
- if(match)return match[1];
- // GS1 Data Matrix raw payload can start with 01 without separators.
- if(/^01\d{14}/.test(cleaned))return cleaned.slice(2,16);
- const digits=cleaned.replace(/\D/g,'');
- if(/^\d{13,14}$/.test(digits))return digits.length===13?'0'+digits:digits;
- return null;
+ const s=String(raw??'').trim();
+ // Barcode readers can return GS1 Data Matrix with a ]d2 identifier,
+ // parentheses, ASCII group separators, or escaped AI notation.
+ const cleaned=s.replace(/^\\]d[12]/,'').replace(/^\\]Q3/,'');
+ const candidates=[];
+ const add=x=>{if(x&&/^\\d{14}$/.test(x)&&!candidates.includes(x))candidates.push(x)};
+ // GS1 AI 01 can appear after symbology/control metadata.
+ for(const match of cleaned.matchAll(/(?:\\(01\\)|01)\\s*(\\d{14})/g))add(match[1]);
+ // Ordinary barcode values are accepted without treating serial digits as product IDs.
+ const trimmed=cleaned.replace(/^\\s+|\\s+$/g,'');
+ if(/^\\d{13}$/.test(trimmed))add('0'+trimmed);
+ if(/^\\d{14}$/.test(trimmed))add(trimmed);
+ return candidates.find(validGtin)||null;
 }
 function validGtin(s){
  if(!/^\d{14}$/.test(s))return false;
@@ -34,15 +34,22 @@ function renderRow(r){
 async function rows(){const all=await transaction('readonly',s=>s.getAll());return all.sort((a,b)=>b.createdAt-a.createdAt)}
 async function refresh(){const all=await rows();$('count').textContent=String(all.length);$('items').replaceChildren(...all.map(renderRow))}
 function clearEntry(){$('code').value='';$('flavor').value='';$('weight').value=''}
+let lastUnrecognized='';
 function scanFound(raw){
  if(scanLocked)return;
  const code=normalizeCode(raw);
- if(!code||!validGtin(code)){
-  // Do not silently discard a successfully decoded Data Matrix: show a safe preview for diagnosis.
-  $('result').textContent='Код распознан, но GTIN не найден. Начало данных: '+String(raw).replace(/[\x00-\x1f\x7f]/g,' ').slice(0,35);
+ if(!code){
+  scanLocked=true;
+  lastUnrecognized=String(raw??'');
+  const preview=lastUnrecognized.replace(/[\\x00-\\x1f\\x7f]/g,' ').slice(0,64);
+  $('result').textContent='Data Matrix считан, но GTIN (01) не определён. Данные: '+preview;
+  $('copyRaw').hidden=false;
+  stopScanner();
+  setStatus('Код прочитан. Нажмите «Копировать данные кода» и пришлите их формат — проверю извлечение GTIN.');
   return;
  }
  scanLocked=true;
+ $('copyRaw').hidden=true;
  $('code').value=code;$('result').textContent='GTIN определён: '+code;
  stopScanner().then(()=>$('weight').focus());
 }
@@ -95,6 +102,7 @@ async function exportJson(){const all=await rows();if(!all.length){setStatus('Н
 async function init(){
  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
  try{db=await openDb();await refresh();setStatus('Тестовая PWA · данные хранятся локально; синхронизация с Google Sheets ещё не подключена')}catch(e){setStatus('Ошибка локального хранилища: '+e.message);return}
+ $('copyRaw').onclick=async()=>{try{await navigator.clipboard.writeText(lastUnrecognized);setStatus('Данные кода скопированы')}catch(e){setStatus('Не удалось скопировать: '+e.message)}};
  $('start').onclick=startScanner;$('stop').onclick=stopScanner;$('cancel').onclick=clearEntry;
  $('save').onclick=()=>save().catch(e=>setStatus('Ошибка записи: '+e.message));
  $('export').onclick=()=>exportJson().catch(e=>setStatus('Ошибка экспорта: '+e.message));
