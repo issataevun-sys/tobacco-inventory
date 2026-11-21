@@ -283,8 +283,8 @@ window.crStaffTobaccoFactory=function(api){
     if(!/^\d{1,3}$/.test(weight)){scanStatus('Укажите целый вес от 0 до 999 г');return}
     if(old!==''&&old!==null&&Number(old)!==Number(weight)&&!confirm('Заменить введённый вес '+old+' г на '+weight+' г?'))return;
     draft.get(item.itemId).serviceGross=String(Number(weight));
-    closeScan();brand=item.brand;render();
-    message('Вес внесён. Для сохранения нажмите «Сохранить».');
+    closeScan();brand=item.brand;render();openScan();
+    scanStatus('Вес '+weight+' г записан для '+label(item)+'. Сканируйте следующую пачку. Для сохранения всех весов закройте сканер и нажмите «Сохранить».');
    };
    box.querySelector('[data-scan-weight]').focus();
   }
@@ -369,8 +369,8 @@ window.crStaffTobaccoFactory=function(api){
    (zone==='service'?'<button type="button" class="tbScanStart" data-scan-start>▥ По штрихкоду</button>':'')+
     '<div data-content></div><p class="tbError" role="status" aria-live="polite"></p>'+
    '<div class="tbActions tbSaveActions"><button type="button" class="tbBtn" data-fill-zeros>Заполнить пустые нулями</button><button type="button" class="tbBtn" data-save>Сохранить</button></div>';
-  root.querySelectorAll('[data-zone]').forEach(function(btn){btn.onclick=function(){capture();zone=btn.dataset.zone;render()}});
-  q('[data-back]').onclick=function(){capture();opened=false;render()};
+  root.querySelectorAll('[data-zone]').forEach(function(btn){btn.onclick=function(){closeScan();capture();zone=btn.dataset.zone;render()}});
+  q('[data-back]').onclick=function(){closeScan();capture();opened=false;render()};
   q('[data-save]').onclick=save;
   q('[data-fill-zeros]').onclick=fillMissingZeros;
    if(q('[data-scan-start]'))q('[data-scan-start]').onclick=openScan;
