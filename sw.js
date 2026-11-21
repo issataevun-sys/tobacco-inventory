@@ -1,5 +1,5 @@
 /* v1.2.0: standalone inventory shell and cached ZXing decoder. */
-const SHELL_CACHE='cr-inventory-pwa-v1.3.0';
+const SHELL_CACHE='cr-inventory-pwa-v1.3.1';
 const DECODER_CACHE='cr-inventory-zxing-v1';
 const SHELL=['./','./index.html','./app.js','./icon.svg','./manifest.webmanifest'];
 const DECODERS=new Set([
@@ -28,8 +28,12 @@ self.addEventListener('fetch',event=>{
  }
  if(url.origin!==self.location.origin||!url.pathname.startsWith(new URL(self.registration.scope).pathname))return;
  event.respondWith(caches.open(SHELL_CACHE).then(async cache=>{
-  const found=await cache.match(req);
-  if(found)return found;
-  return fetch(req);
+  if(req.mode==='navigate'||url.pathname.endsWith('/index.html')||url.pathname.endsWith('/app.js')){
+   try{const fresh=await fetch(req,{cache:'no-store'});if(fresh.ok)await cache.put(req,fresh.clone());return fresh}
+   catch(e){const cached=await cache.match(req,{ignoreSearch:true});if(cached)return cached;throw e}
+  }
+  const cached=await cache.match(req,{ignoreSearch:true});
+  if(cached)return cached;
+  const fresh=await fetch(req);if(fresh.ok)await cache.put(req,fresh.clone());return fresh;
  }));
 });
