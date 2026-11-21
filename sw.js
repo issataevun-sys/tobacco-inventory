@@ -1,4 +1,4 @@
-const CACHE='tobacco-inventory-v2';
+const CACHE='tobacco-inventory-v3';
 const BASE=new URL('./',self.registration.scope).href;
 const DECODER='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
 const DECODER_CACHE='tobacco-decoder-v1';
