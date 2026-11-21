@@ -23,7 +23,7 @@ button:disabled{opacity:.5}button.secondary{background:#eee;color:#202020}button
 label{display:block;font-size:12px;font-weight:600;margin:8px 0 5px}
 input,select{width:100%;min-height:44px;border:1px solid #dedee2;border-radius:10px;padding:9px 12px;background:#fff;color:#171719;font-size:16px}
 #reader{width:100%;overflow:hidden;border-radius:12px;background:#171719}
-#reader video{width:100%!important;border-radius:12px}
+#reader video{width:100%!important;border-radius:12px;object-fit:cover}#reader video::-webkit-media-controls{display:none!important}
 #reader__scan_region{min-height:160px}#reader__dashboard{padding:8px;background:white}
 #scanner[hidden],#entry[hidden]{display:none}
 #result{font-size:13px;color:#5d5d62;min-height:18px}
@@ -42,8 +42,8 @@ input,select{width:100%;min-height:44px;border:1px solid #dedee2;border-radius:1
 <section><h2>Сканирование</h2>
 <div class="actions"><button class="yellow" id="start">Сканировать</button><button class="secondary" id="stop" disabled>Закрыть камеру</button></div>
 <div id="scanner" hidden><div id="reader"></div></div>
-<p id="result" role="status">EAN-13 и Data Matrix · одна камера</p>
-<p class="note">Первое сканирование требует интернета для загрузки библиотеки. После загрузки приложение попробует работать офлайн. На iPhone разрешите доступ к камере.</p></section>
+<p id="result" role="status">Наведите рамку на Data Matrix или штрихкод</p>
+<p class="note">Для мелкого Data Matrix приблизьте пачку и дождитесь фокуса. Первое сканирование требует интернета для загрузки библиотеки. После загрузки приложение попробует работать офлайн. На iPhone разрешите доступ к камере.</p></section>
 <section id="entry"><h2>Вес табака</h2><label for="code">GTIN / штрихкод</label><input id="code" inputmode="numeric" maxlength="14" placeholder="Сканируйте или введите код">
 <label for="flavor">Название вкуса</label><input id="flavor" autocomplete="off" placeholder="Например, Darkside · ...">
 <label for="weight">Вес, граммы</label><input id="weight" type="number" inputmode="decimal" min="0" max="100000" step="0.01" placeholder="0">
