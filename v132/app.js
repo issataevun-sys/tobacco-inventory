@@ -139,7 +139,7 @@ var api={
       state.snapshot=await rpc('crStaffTobaccoActive',{});
      }else{
       var id=crypto.randomUUID(),queuedAt=Date.now();
-      state.snapshot={ok:true,active:true,id:id,day:payload.day,revision:'',lines:clone(state.snapshot.template),barcodes:clone(state.snapshot.barcodes||[])};
+      state.snapshot={ok:true,active:true,id:id,day:payload.day,revision:'',lines:clone(state.snapshot.template),barcodes:clone(state.snapshot.barcodes||[]),flavors:clone(state.snapshot.flavors||[])};
       state.queue.push({method:'create',id:id,day:payload.day,queuedAt:queuedAt});
      }
     }else if(method==='crStaffTobaccoSave'){
