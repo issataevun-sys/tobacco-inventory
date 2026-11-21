@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Cocktail Room · Инвентаризация</title><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><meta name="theme-color" content="#252529">
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Arial,sans-serif;color-scheme:light;--staffInk:#222428;--staffMute:#6c7078;--staffPanel:#fff;--staffSoft:#f1f1f2;--staffHover:#e5e5e7;--staffLine:#e4e4e6}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f6f6f7;color:#222428}
+body.staffInside{padding:0;min-height:100dvh;}
+main{width:100%;max-width:440px;margin:0 auto;padding:0 12px calc(24px + env(safe-area-inset-bottom));}
+.appHeader{height:calc(61px + env(safe-area-inset-top));margin:0 -12px;position:relative;display:flex;align-items:center;justify-content:center;padding:calc(8px + env(safe-area-inset-top)) 56px 8px;background:#252529;color:#fff}
+.appHeader .appLogo{display:block;width:92px;max-height:49px;height:auto;object-fit:contain}
+.appHeader .appVersion{position:absolute;left:13px;bottom:17px;font-size:11px;font-weight:600;color:#b9bbc2;letter-spacing:.01em}
+.appHeader .headerRefresh{position:absolute;right:13px;bottom:10px;width:40px;height:40px;display:grid;place-items:center;border:0;border-radius:11px;background:#35353b;color:#f4f4f7;cursor:pointer;padding:0}
+.appHeader .headerRefresh svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.appHeader .headerRefresh:disabled{opacity:.5}
+#status{display:flex;align-items:center;justify-content:center;gap:6px;min-height:34px;margin:7px 0 7px;color:#52545d;font-size:12px;font-weight:500;line-height:1.3;text-align:center}
+#status::before{content:'';width:6px;height:6px;flex:none;border-radius:50%;background:#36a375}
+#status[data-state=offline]::before{background:#d69d32}
+#status[data-state=conflict]::before{background:#d34b55}
+#status[data-state=syncing]::before{background:#5b91f4}
+#setup{padding:24px;background:white;border-radius:16px;margin-top:18px}
+#setup label{display:block;font-size:13px;margin-bottom:8px}
+#setup input{font:inherit;padding:12px;border:1px solid #ddd;border-radius:10px;width:100%}
+#setup button{width:100%;padding:13px;margin-top:12px;border:0;border-radius:11px;background:#242429;color:white;font-weight:600}
+#setup p{font-size:12px;color:#777;line-height:1.5}
+#setup [role=alert]{color:#b32136;font-size:12px}
+#inventory{padding:16px 14px;border-radius:16px;background:#fff;min-width:0;box-shadow:0 1px 2px rgba(0,0,0,.025)}
+[hidden]{display:none!important}
+@media(max-width:440px){.staffTobacco .tbRow{grid-template-columns:minmax(0,1fr) 126px;gap:6px;padding:10px 8px}.staffTobacco .tbPack{max-width:100%}}
+</style>
+<style>
+/* STAFF uses --staff* theme tokens, NOT the dark PIN/login --text/--field tokens. */
+.staffTobacco{min-width:0;max-width:100%;color:var(--staffInk);--tb-bg:var(--staffPanel);--tb-surface:var(--staffSoft);--tb-hover:var(--staffHover);--tb-line:var(--staffLine);--tb-text:var(--staffInk);--tb-muted:var(--staffMute)}
+.staffTobacco *{box-sizing:border-box}
+.staffTobacco .tbHead{display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+.staffTobacco h3{font-size:16px;margin:0;color:var(--tb-text)}
+.staffTobacco h4{font-size:13px;margin:17px 0 9px;color:var(--tb-text)}
+.staffTobacco .tbHint{color:var(--tb-muted);font-size:12px;line-height:1.5;margin:9px 0 13px}
+body.staffInside .staffTobacco button{font-family:inherit;box-shadow:none}
+body.staffInside .staffTobacco .tbBtn{width:auto;min-height:36px;padding:8px 12px;font-size:12px;margin:0;border:0;border-radius:9px;background:var(--tb-surface);color:var(--tb-text)}
+body.staffInside .staffTobacco .tbBtn:hover{background:var(--tb-hover)}
+body.staffInside .staffTobacco [data-save],body.staffInside .staffTobacco [data-create]{background:#252529;color:#fff}
+body.staffInside .staffTobacco [data-save]:hover,body.staffInside .staffTobacco [data-create]:hover{background:#39393d}
+.staffTobacco .tbSwitch{display:flex;gap:5px;background:var(--tb-surface);border-radius:12px;padding:5px;margin-bottom:13px}
+body.staffInside .staffTobacco .tbSwitch button{flex:1;width:auto;margin:0;border:0;background:transparent;color:var(--tb-text);padding:9px 12px;min-height:39px;font-size:13px;border-radius:9px;font-weight:550}
+body.staffInside .staffTobacco .tbSwitch button.active{background:var(--tb-bg);color:var(--tb-text);box-shadow:0 1px 5px #0001;font-weight:700}
+.staffTobacco .tbBrands{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+body.staffInside .staffTobacco .tbBrands button{width:auto;margin:0;min-height:35px;background:var(--tb-surface);color:var(--tb-text);border:0;padding:7px 11px;font-size:12px;border-radius:8px}
+body.staffInside .staffTobacco .tbBrands button.active{background:#252529;color:#fff}
+.staffTobacco .tbTable{border:1px solid var(--tb-line);border-radius:12px;overflow:hidden;background:var(--tb-bg)}
+.staffTobacco .tbRow{display:grid;grid-template-columns:minmax(0,1fr) 155px;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--tb-line);min-width:0}
+.staffTobacco .tbRow:last-child{border:0}
+.staffTobacco .tbRow strong{font-size:12px;font-weight:600;color:var(--tb-text);overflow-wrap:anywhere}
+.staffTobacco label{font-size:11px;color:var(--tb-muted);margin:0}
+body.staffInside .staffTobacco input,body.staffInside .staffTobacco select{display:block;width:100%;min-width:0;min-height:38px;font:inherit;font-size:13px;line-height:1.35;background:var(--tb-bg);color:var(--tb-text);border:1px solid var(--tb-line);border-radius:9px;padding:8px 10px;box-shadow:none;outline:none}
+body.staffInside .staffTobacco select{padding-right:32px}
+/* Override the global STAFF login option{background:var(--field);color:#fff}.
+   Force native browser popups to use the selected app theme too. */
+body.staffInside[data-staff-theme="light"] .staffTobacco select{color-scheme:light}
+body.staffInside[data-staff-theme="light"] .staffTobacco select option{background:#fff;color:#24252b}
+body.staffInside[data-staff-theme="dark"] .staffTobacco select{color-scheme:dark}
+body.staffInside[data-staff-theme="dark"] .staffTobacco select option{background:#252529;color:#f4f4f7}
+body.staffInside .staffTobacco input::placeholder{color:var(--tb-muted);opacity:1}
+body.staffInside .staffTobacco input:focus,body.staffInside .staffTobacco select:focus{border-color:var(--staffAccent);outline:2px solid transparent}
+.staffTobacco .tbPack{display:grid;grid-template-columns:minmax(0,1fr) 125px 95px 42px;gap:8px;align-items:end;padding:10px;border-bottom:1px solid var(--tb-line)}
+.staffTobacco .tbPack:last-child{border:0}
+/* Same Apple Graphite destructive text-button pattern as MANAGEMENT TobaccoView. */
+body.staffInside .staffTobacco .tbPack button.tbRemove{
+ display:flex;align-items:center;justify-content:center;width:auto;min-height:34px;
+ margin:0;padding:7px 11px;white-space:nowrap;border:0;border-radius:9px;
+ background:#fff1f2;color:#c02640;box-shadow:none;
+ font-family:inherit;font-weight:600;font-size:12px;line-height:1.2;
+ appearance:none;-webkit-appearance:none;cursor:pointer;
+}
+body.staffInside .staffTobacco .tbPack button.tbRemove:hover{background:#ffe4e8;color:#a91e36}
+body.staffInside .staffTobacco .tbPack button.tbRemove:focus-visible{outline:2px solid #c02640;outline-offset:2px}
+.staffTobacco .tbActions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:16px 0 0}
+.staffTobacco .tbError{color:#c4384a;font-size:12px;margin:9px 0}
+.staffTobacco .tbCount{font-size:12px;color:var(--tb-muted)}
+body.staffInside[data-staff-theme="dark"] .staffTobacco .tbError{color:#ff999f}
+@media(max-width:700px){
+ .staffTobacco .tbRow{grid-template-columns:minmax(0,1fr) 125px;padding:9px 8px}
+ .staffTobacco .tbPack{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 42px;gap:7px}
+ .staffTobacco .tbPack label:first-child{grid-column:1/-1}
+ .staffTobacco .tbPack .tbRemove{grid-column:3;grid-row:2}
+ .staffTobacco .tbPack label:nth-child(2){grid-column:1;grid-row:2}
+ .staffTobacco .tbPack label:nth-child(3){grid-column:2;grid-row:2}
+}
+
+/* Management-matching inventory layout. Scoped to STAFF. */
+.staffTobacco .tbInventoryCard{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--tb-line);border-radius:12px;background:var(--tb-bg);padding:13px 14px;margin:10px 0 16px;min-width:0}
+.staffTobacco .tbInventoryCard>div{min-width:0;display:grid;gap:5px}
+.staffTobacco .tbInventoryCard strong{font-size:13px;color:var(--tb-text)}
+.staffTobacco .tbSwitch{gap:6px;border-radius:10px;margin:16px 0;padding:5px}
+body.staffInside .staffTobacco .tbSwitch button{min-height:40px;border-radius:8px;font-size:13px;font-weight:600;padding:10px}
+.staffTobacco .tbBrands{gap:5px;margin:13px 0}
+body.staffInside .staffTobacco .tbBrands button{padding:8px 12px;min-height:35px;border-radius:9px;font-weight:400;font-size:12px;letter-spacing:normal}
+.staffTobacco .tbTable{margin:12px 0;border-radius:12px}
+.staffTobacco .tbRow{grid-template-columns:minmax(0,1fr) 170px;gap:12px;padding:10px 12px}
+.staffTobacco .tbRow strong{font-size:12px}
+.staffTobacco .tbPack{grid-template-columns:minmax(0,1fr) 170px 150px 42px;gap:10px}
+@media(max-width:700px){
+ .staffTobacco .tbRow{grid-template-columns:minmax(0,1fr) 125px;gap:8px;padding:9px 8px}
+ .staffTobacco .tbPack{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 42px;gap:7px}
+ .staffTobacco .tbInventoryCard{flex-wrap:wrap}
+}
+.staffTobacco .tbDialogBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.52);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10000}
+.staffTobacco .tbDialog{width:min(100%,410px);background:var(--tb-bg);border:1px solid var(--tb-line);border-radius:16px;box-shadow:0 20px 70px #0004;padding:20px;display:grid;gap:12px}
+.staffTobacco .tbDialog h4{font-size:16px;margin:0;color:var(--tb-text)}
+.staffTobacco .tbDialog p{margin:0;color:var(--tb-muted);font-size:13px;line-height:1.55}
+.staffTobacco .tbDateChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+body.staffInside .staffTobacco .tbDateChoices .tbBtn{padding:9px 5px;min-height:40px;border:1px solid var(--tb-line);font-weight:550}
+body.staffInside .staffTobacco .tbDateChoices .tbBtn.active{background:#252529;color:#fff;border-color:#252529}
+.staffTobacco .tbSelectedDate{color:var(--tb-text)!important}
+.staffTobacco .tbDialogActions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+body.staffInside .staffTobacco .tbDialog .tbConfirm{background:#252529;color:#fff}
+body.staffInside .staffTobacco .tbDialog .tbConfirm:hover{background:#39393d}
+body.staffInside .staffTobacco .tbDialog .tbConfirm:disabled{opacity:.55}
+
+/* iPhone 14 Pro standalone refinements. Keep all business logic unchanged. */
+.staffTobacco .tbHead{margin-bottom:10px}
+.staffTobacco .tbHead h3{font-size:17px;font-weight:700;letter-spacing:-.25px}
+.staffTobacco .tbEmptyHint{margin:11px 0 18px;font-size:12px}
+.staffTobacco .tbEmptyActions{margin-top:0;display:block}
+body.staffInside .staffTobacco .tbEmptyActions [data-create]{width:100%;min-height:44px;border-radius:11px;font-size:13px;font-weight:650}
+.staffTobacco .tbInventoryCard{padding:12px;margin:10px 0 5px}
+.staffTobacco .tbSaveActions{position:sticky;bottom:calc(0px + env(safe-area-inset-bottom));z-index:4;margin:14px -14px -16px;padding:10px 14px 12px;background:var(--tb-bg);border-top:1px solid var(--tb-line);border-radius:0 0 16px 16px;box-shadow:0 -6px 18px rgba(0,0,0,.035)}
+body.staffInside .staffTobacco .tbSaveActions [data-save]{width:100%;min-height:46px;font-size:14px;font-weight:650;border-radius:11px}
+.staffTobacco .tbBrands{gap:6px}
+body.staffInside .staffTobacco .tbBrands button{min-height:36px;font-weight:550}
+.staffTobacco .tbDialogBackdrop{padding:16px;align-items:center}
+.staffTobacco .tbDialog{padding:20px 17px 16px;border-radius:17px;gap:11px}
+.staffTobacco .tbDialog .tbError:empty{display:none}
+.staffTobacco .tbDialog .tbError{margin:0}
+.staffTobacco .tbDialog h4{font-size:17px;font-weight:700;letter-spacing:-.25px}
+body.staffInside .staffTobacco .tbDateChoices .tbBtn{min-height:43px;padding:9px 3px;font-size:12px}
+.staffTobacco .tbDialogActions{margin-top:5px}
+body.staffInside .staffTobacco .tbDialogActions .tbBtn{min-height:42px;padding:9px 15px;font-size:12px}
+@media(max-width:440px){.staffTobacco .tbRow{grid-template-columns:minmax(0,1fr) 126px;gap:6px;padding:10px 8px}.staffTobacco .tbPack{max-width:100%}}
+
+/* Clear numeric field without changing any other inventory values. */
+.staffTobacco .tbNumberField{position:relative;display:block;min-width:0}
+body.staffInside .staffTobacco .tbNumberField input{padding-right:33px;appearance:textfield;-moz-appearance:textfield}
+body.staffInside .staffTobacco .tbNumberField input::-webkit-inner-spin-button,
+body.staffInside .staffTobacco .tbNumberField input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+body.staffInside .staffTobacco .tbNumberClear{position:absolute;right:5px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:25px;min-height:25px;height:25px;margin:0;padding:0;border:0;border-radius:7px;background:transparent;color:#8c8e96;cursor:pointer}
+body.staffInside .staffTobacco .tbNumberClear:hover{background:var(--tb-surface);color:var(--tb-text)}
+body.staffInside .staffTobacco .tbNumberClear:focus-visible{outline:2px solid var(--staffAccent);outline-offset:1px}
+.staffTobacco .tbNumberClear svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+body.staffInside .staffTobacco .tbNumberClear[hidden]{display:none}
+/* Compact iPhone closed-pack row: full-width name, two inputs, then standard Delete. */
+@media(max-width:700px){
+ .staffTobacco .tbPack{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .staffTobacco .tbPack label:first-child{grid-column:1/-1;grid-row:1}
+ .staffTobacco .tbPack label:nth-child(2){grid-column:1;grid-row:2}
+ .staffTobacco .tbPack label:nth-child(3){grid-column:2;grid-row:2}
+ body.staffInside .staffTobacco .tbPack button.tbRemove{grid-column:2;grid-row:3;justify-self:end}
+}
+body.staffInside .staffTobacco .tbZeroActions{margin-top:8px}
+body.staffInside .staffTobacco .tbZeroActions .tbBtn{width:100%;min-height:40px;border:1px solid var(--tb-line);background:var(--tb-bg);color:var(--tb-text);font-weight:600}
+body.staffInside .staffTobacco .tbZeroActions .tbBtn:disabled{opacity:.55}
+/* Unified compact footer: both actions remain readable on iPhone. */
+body.staffInside .staffTobacco .tbSaveActions{display:flex;flex-direction:column;align-items:stretch;gap:9px}
+body.staffInside .staffTobacco .tbSaveActions [data-fill-zeros]{display:block;flex:none;width:100%;min-height:43px;margin:0;padding:10px 12px;border:1px solid var(--tb-line);border-radius:10px;background:var(--tb-surface);color:var(--tb-text);font-size:12px;font-weight:650;line-height:1.35;text-align:center;white-space:normal}
+body.staffInside .staffTobacco .tbSaveActions [data-fill-zeros]:hover{background:var(--tb-hover)}
+body.staffInside .staffTobacco .tbSaveActions [data-fill-zeros]:disabled{opacity:.55}
+body.staffInside .staffTobacco .tbSaveActions [data-save]{flex:none;margin:0}
+.staffTobacco .tbScanStart{display:block;width:100%;min-height:43px;background:var(--tb-surface);color:var(--tb-text);border:1px solid var(--tb-line);border-radius:10px;font-weight:650;margin:0 0 10px}
+.staffTobacco .tbScanPanel{background:var(--tb-bg);border:1px solid var(--tb-line);border-radius:12px;padding:12px;margin-bottom:12px}
+.staffTobacco .tbScanPanel .tbScanReader{width:100%;min-height:220px;overflow:hidden;border-radius:9px;background:#111}
+.staffTobacco .tbScanPanel #tb-inline-reader video{width:100%;height:215px;background:#111;object-fit:cover;border-radius:9px;display:block}
+.staffTobacco .tbScanPanel p{font-size:12px;line-height:1.5;color:var(--tb-muted)}
+.staffTobacco .tbScanPanel .tbScanResult{padding:10px;border-radius:9px;background:var(--tb-surface);margin:10px 0}
+.staffTobacco .tbScanPanel .tbScanResult strong{display:block;margin-bottom:6px;font-size:13px}
+.staffTobacco .tbScanPanel .tbScanResult input{margin:8px 0}
+.staffTobacco .tbScanControls{display:flex;gap:8px;margin-top:8px}
+body.staffInside .staffTobacco .tbScanControls button{flex:1}
+</style>
+<script>
+window.crStaffTobaccoFactory=function(api){
+ 'use strict';
+ var root=null,model=null,draft=null,zone='service',brand='',packs=[],busy=false,epoch=0,opened=false,scanReader=null,scanOpen=false;
+ function esc(s){return String(s===null||s===undefined?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+ function date(s){return /^\d{4}-\d{2}-\d{2}$/.test(s)?new Date(s+'T12:00:00Z').toLocaleDateString('ru-RU',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}):String(s)}
+ var brandNames={BB:'BlackBurn',CH:'Chabacco',DEUS:'DEUS',DS:'Darkside',MH:'Musthave',OD:'Overdose',S:'Sebero',TN:'Tangiers'};
+ function brandLabel(code){return brandNames[code]||code}
+ function label(i){return (i.brand?brandLabel(i.brand)+' · ':'')+i.name}
+ function q(s){return root&&root.querySelector(s)}
+ function message(text){var el=q('.tbError');if(el)el.textContent=text}
+ function capture(){
+  if(!draft||!root)return;
+  root.querySelectorAll('[data-gross]').forEach(function(el){draft.get(el.dataset.gross).serviceGross=el.value});
+  root.querySelectorAll('[data-service-qty]').forEach(function(el){draft.get(el.dataset.serviceQty).serviceQty=el.value});
+  root.querySelectorAll('[data-warehouse-qty]').forEach(function(el){draft.get(el.dataset.warehouseQty).warehouseQty=el.value});
+  if(zone==='warehouse')packs=Array.from(root.querySelectorAll('[data-pack-line]')).map(function(row){
+   return {itemId:row.querySelector('[data-item]').value,pack:row.querySelector('[data-size]').value,pieces:row.querySelector('[data-pieces]').value};
+  });
+ }
+
+ function addNumericClearButtons(container){
+  if(!container)return;
+  container.querySelectorAll('input[data-gross],input[data-service-qty],input[data-warehouse-qty],input[data-pieces]').forEach(function(input){
+   if(input.closest('.tbNumberField'))return;
+   var wrapper=document.createElement('span');
+   wrapper.className='tbNumberField';
+   input.parentNode.insertBefore(wrapper,input);
+   wrapper.appendChild(input);
+   var clear=document.createElement('button');
+   clear.type='button';clear.className='tbNumberClear';
+   clear.setAttribute('aria-label','Очистить значение');
+   clear.setAttribute('title','Очистить значение');
+   clear.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+   wrapper.appendChild(clear);
+   function update(){clear.hidden=input.value===''}
+   input.addEventListener('input',function(){
+    var limit=Number(input.dataset.digits||3);
+    var normalized=String(input.value||'').replace(/[^0-9]/g,'').slice(0,limit);
+    if(input.value!==normalized)input.value=normalized;
+    update();
+   });
+   input.addEventListener('change',update);
+   clear.addEventListener('click',function(e){
+    e.preventDefault();e.stopPropagation();
+    input.value='';
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    input.focus();
+   });
+   update();
+  });
+ }
+
+
+ function scannedGtin(raw){
+  var s=String(raw==null?'':raw).replace(/^\]d[12]/,'').replace(/^\]Q3/,'').trim(),values=[];
+  function add(v){if(/^\d{14}$/.test(v)&&values.indexOf(v)<0)values.push(v)}
+  // Same validated parser as tobacco-inventory v1.0.2: Kazakhstan 14+7+8.
+  if(/^\d{14}[\s\S]{15}$/.test(s))add(s.slice(0,14));
+  Array.from(s.matchAll(/(?:\(01\)|(?:^|\x1d)01)\s*(\d{14})/g)).forEach(function(m){add(m[1])});
+  if(/^01\d{14}/.test(s))add(s.slice(2,16));
+  if(/^\d{13}$/.test(s))add('0'+s);
+  if(/^\d{14}$/.test(s))add(s);
+  return values.find(function(v){var sum=0;for(var i=12;i>=0;i--)sum+=Number(v[i])*((12-i)%2===0?3:1);return (10-sum%10)%10===Number(v[13])})||'';
+ }
+ var scanRunning=false,scanLocked=false,scanStopping=Promise.resolve(),scanSeq=0;
+ function stopScan(){
+  var reader=scanReader;
+  scanSeq++;
+  scanReader=null;scanRunning=false;
+  if(!reader)return scanStopping;
+  scanStopping=scanStopping.then(function(){return reader.stop().catch(function(){}).then(function(){try{reader.clear()}catch(e){}})}).catch(function(){});
+  return scanStopping;
+ }
+ function closeScan(){
+  scanOpen=false;stopScan();
+  var el=q('[data-scan-panel]');if(el)el.remove();
+ }
+ function scanStatus(s){var el=q('[data-scan-status]');if(el)el.textContent=s}
+ function scanFound(raw){
+  if(scanLocked)return;
+  var code=scannedGtin(raw),box=q('[data-scan-result]');
+  if(!box)return;
+  if(!code){if(String(raw||'').length>=13)scanStatus('Код прочитан, но GTIN не выделен. Можно ввести его вручную.');return}
+  scanLocked=true;stopScan();box.hidden=false;
+  var entries=(model.barcodes||[]).filter(function(x){return scannedGtin(x.barcode)===code});
+  var unique=[...new Set(entries.map(function(x){return String(x.itemId)}))];
+  var item=unique.length===1?model.lines.find(function(x){return String(x.itemId)===unique[0]&&x.category==='tobacco'}):null;
+  if(!entries.length){
+   box.innerHTML='<strong>GTIN '+esc(code)+'</strong><p>Штрихкод не найден в разделе «Списки → Штрихкоды».</p>';
+  }else if(unique.length!==1){
+   box.innerHTML='<strong>GTIN '+esc(code)+'</strong><p>Несколько вкусов привязаны к одному GTIN. Проверьте список штрихкодов.</p>';
+  }else if(!item){
+   box.innerHTML='<strong>GTIN '+esc(code)+'</strong><p>Вкус найден, но отсутствует в текущей инвентаризации.</p>';
+  }else{
+   var old=draft.get(item.itemId).serviceGross;
+   box.innerHTML='<strong>'+esc(label(item))+'</strong><p>GTIN '+esc(code)+(old!==''&&old!==null?' · Сейчас '+esc(old)+' г':'')+'</p>'+
+    '<label>Вес с тарой, г<input type="text" inputmode="numeric" maxlength="3" data-scan-weight placeholder="0–999"></label>'+
+    '<button type="button" class="tbBtn" data-scan-apply>Записать вес</button>';
+   box.querySelector('[data-scan-apply]').onclick=function(){
+    var weight=box.querySelector('[data-scan-weight]').value.trim();
+    if(!/^\d{1,3}$/.test(weight)){scanStatus('Укажите целый вес от 0 до 999 г');return}
+    if(old!==''&&old!==null&&Number(old)!==Number(weight)&&!confirm('Заменить введённый вес '+old+' г на '+weight+' г?'))return;
+    draft.get(item.itemId).serviceGross=String(Number(weight));
+    closeScan();brand=item.brand;render();openScan();
+    scanStatus('Вес '+weight+' г записан для '+label(item)+'. Сканируйте следующую пачку. Для сохранения всех весов закройте сканер и нажмите «Сохранить».');
+   };
+   box.querySelector('[data-scan-weight]').focus();
+  }
+  scanStatus(item?'Вкус определён. Укажите вес с тарой.':'Совпадение с текущей инвентаризацией не найдено.');
+  box.insertAdjacentHTML('beforeend','<button type="button" class="tbBtn" data-scan-next>Сканировать следующий</button>');
+  box.querySelector('[data-scan-next]').onclick=function(){box.hidden=true;scanLocked=false;startScanCamera()};
+ }
+ function loadScanDecoder(){
+  if(window.Html5Qrcode)return Promise.resolve();
+  var urls=['https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js','https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js'];
+  function load(i){
+   if(i>=urls.length)return Promise.reject(Error('Декодер не загрузился'));
+   return new Promise(function(ok,fail){var s=document.createElement('script');s.src=urls[i];s.onload=ok;s.onerror=fail;document.head.appendChild(s)})
+    .then(function(){if(!window.Html5Qrcode)throw Error('Декодер недоступен')}).catch(function(){return load(i+1)});
+  }
+  return load(0);
+ }
+ async function startScanCamera(){
+  if(!scanOpen)return;
+  var seq=++scanSeq;
+  await stopScan(); // camera must be released before starting another read
+  if(!scanOpen)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){scanStatus('Камера недоступна. Введите GTIN вручную.');return}
+  scanLocked=false;scanStatus('Включаем заднюю камеру…');
+  var decoder;
+  try{
+   await loadScanDecoder();
+   if(!scanOpen||seq+1!==scanSeq)return;
+   var supported=[Html5QrcodeSupportedFormats.DATA_MATRIX,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A];
+   decoder=new Html5Qrcode('tb-inline-reader',{formatsToSupport:supported,verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:false}});
+   scanReader=decoder;
+   var width=Math.min(Math.max(window.innerWidth-50,220),440),side=Math.min(280,Math.max(170,width-45));
+   await decoder.start({facingMode:'environment'},{
+    fps:15,qrbox:{width:side,height:side},aspectRatio:1,
+    videoConstraints:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}
+   },function(decoded){if(scanOpen&&scanReader===decoder)scanFound(decoded)},function(){});
+   if(!scanOpen||scanReader!==decoder){try{await decoder.stop()}catch(e){};try{decoder.clear()}catch(e){};return}
+   scanRunning=true;
+   var video=q('#tb-inline-reader video');
+   if(video){video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');video.muted=true;video.controls=false}
+   scanStatus('Наведите камеру на Data Matrix или штрихкод');
+  }catch(e){
+   scanStatus('Не удалось открыть камеру: '+String(e&&e.message||e)+'. Можно ввести GTIN вручную.');
+   if(decoder){try{await decoder.stop()}catch(_){}try{decoder.clear()}catch(_){}}
+   if(scanReader===decoder)scanReader=null;
+  }
+ }
+ function openScan(){
+  if(!model||!model.active||busy||scanOpen||zone!=='service')return;
+  capture();scanOpen=true;scanLocked=false;
+  var panel=document.createElement('div');panel.className='tbScanPanel';panel.setAttribute('data-scan-panel','');
+  panel.innerHTML='<strong>По штрихкоду</strong><div id="tb-inline-reader" class="tbScanReader"></div>'+
+   '<p data-scan-status>Запускаем камеру…</p><div data-scan-result class="tbScanResult" hidden></div>'+
+   '<label>Ввести GTIN вручную<input type="text" data-scan-manual placeholder="Штрихкод или код Data Matrix"></label>'+
+   '<div class="tbScanControls"><button type="button" class="tbBtn" data-scan-find>Найти</button><button type="button" class="tbBtn" data-scan-close>Закрыть</button></div>';
+  q('[data-scan-start]').insertAdjacentElement('afterend',panel);
+  panel.querySelector('[data-scan-find]').onclick=function(){scanFound(panel.querySelector('[data-scan-manual]').value)};
+  panel.querySelector('[data-scan-close]').onclick=closeScan;
+  startScanCamera();
+ }
+ function render(){
+  if(!root)return;
+  if(!model){root.innerHTML='<p class="tbHint">Загружаем инвентаризацию…</p>';return}
+  if(!model.active){
+   opened=false;
+   root.innerHTML='<div class="tbHead"><h3>Инвентаризации</h3></div>'+
+    '<p class="tbHint tbEmptyHint">Активных инвентаризаций пока нет</p><div class="tbActions tbEmptyActions"><button type="button" class="tbBtn" data-create>+ Инвентаризация</button></div>';
+   q('[data-create]').onclick=create;return;
+  }
+  if(!opened){
+   var completed=model.lines.filter(function(i){return i.category==='tobacco'?(i.serviceGross!==null&&i.serviceGross!==undefined):(i.serviceQty!==null&&i.serviceQty!==undefined&&i.warehouseQty!==null&&i.warehouseQty!==undefined)}).length;
+   root.innerHTML='<div class="tbHead"><h3>Инвентаризации</h3></div>'+
+    '<h4>Активные</h4><div class="tbInventoryCard"><div><strong>'+esc(date(model.day))+'</strong><div class="tbCount">Заполнено '+completed+' из '+model.lines.length+' позиций</div></div><button type="button" class="tbBtn" data-open>Открыть</button></div>';
+   q('[data-open]').onclick=function(){opened=true;zone='service';render()};return;
+  }
+  var all=model.lines,brands=[...new Set(all.filter(function(x){return x.category==='tobacco'}).map(function(x){return x.brand}))].sort();
+  if(!brand||brands.indexOf(brand)<0&&brand!=='OTHER')brand=brands[0]||'OTHER';
+  var cons=all.filter(function(x){return x.category!=='tobacco'});
+  root.innerHTML='<div class="tbHead"><div><h3>Инвентаризация · '+esc(date(model.day))+'</h3></div><button type="button" class="tbBtn" data-back>← К списку</button></div>'+
+   '<div class="tbSwitch"><button data-zone="service" class="'+(zone==='service'?'active':'')+'">Сервис</button><button data-zone="warehouse" class="'+(zone==='warehouse'?'active':'')+'">Склад</button></div>'+
+   (zone==='service'?'<p class="tbHint">Открытый табак: укажите вес с тарой (0, если открытой пачки нет).</p>':'')+
+   (zone==='service'?'<button type="button" class="tbScanStart" data-scan-start>▥ По штрихкоду</button>':'')+
+    '<div data-content></div><p class="tbError" role="status" aria-live="polite"></p>'+
+   '<div class="tbActions tbSaveActions"><button type="button" class="tbBtn" data-fill-zeros>Заполнить пустые нулями</button><button type="button" class="tbBtn" data-save>Сохранить</button></div>';
+  root.querySelectorAll('[data-zone]').forEach(function(btn){btn.onclick=function(){closeScan();capture();zone=btn.dataset.zone;render()}});
+  q('[data-back]').onclick=function(){closeScan();capture();opened=false;render()};
+  q('[data-save]').onclick=save;
+  q('[data-fill-zeros]').onclick=fillMissingZeros;
+   if(q('[data-scan-start]'))q('[data-scan-start]').onclick=openScan;
+  var area=q('[data-content]');
+  if(zone==='service'){
+   area.innerHTML='<div class="tbBrands">'+brands.map(function(b){return '<button data-brand="'+esc(b)+'" class="'+(b===brand?'active':'')+'">'+esc(brandLabel(b))+'</button>'}).join('')+
+    (cons.length?'<button data-brand="OTHER" class="'+(brand==='OTHER'?'active':'')+'">Уголь / мундштуки</button>':'')+'</div>'+
+    '<div class="tbTable">'+(brand==='OTHER'?cons.map(function(i){return '<div class="tbRow"><strong>'+esc(i.name)+'</strong><label>'+esc(i.unit)+'<input type="text" inputmode="numeric" autocomplete="off" data-digits="'+(i.category==='mouthpiece'?2:3)+'" data-service-qty="'+esc(i.itemId)+'" value="'+esc(draft.get(i.itemId).serviceQty)+'" placeholder="Не считали"></label></div>'}).join(''):
+    all.filter(function(i){return i.category==='tobacco'&&i.brand===brand}).sort(function(a,b){return a.name.localeCompare(b.name,'ru')}).map(function(i){
+     return '<div class="tbRow"><strong>'+esc(i.name)+'</strong><label>Вес с тарой, г<input type="text" inputmode="numeric" autocomplete="off" data-digits="3" data-gross="'+esc(i.itemId)+'" value="'+esc(draft.get(i.itemId).serviceGross)+'" placeholder="Не считали"></label></div>';
+    }).join(''))+'</div>';
+   area.querySelectorAll('[data-brand]').forEach(function(btn){btn.onclick=function(){capture();brand=btn.dataset.brand;render()}});
+  }else{
+   var candidates=all.filter(function(i){return i.category==='tobacco'}).sort(function(a,b){return label(a).localeCompare(label(b),'ru')});
+   var options='<option value="">Выберите вкус</option>'+candidates.map(function(i){return '<option value="'+esc(i.itemId)+'">'+esc(label(i))+'</option>'}).join('');
+   area.innerHTML='<h4>Закрытые пачки</h4><div class="tbTable">'+(packs.map(function(p,i){
+    return '<div class="tbPack" data-pack-line="'+i+'"><label>Наименование<select data-item>'+options+'</select></label>'+
+     '<label>Фасовка<select data-size>'+[100,125,200,250].map(function(n){return '<option value="'+n+'" '+(Number(p.pack)===n?'selected':'')+'>'+n+' г</option>'}).join('')+'</select></label>'+
+     '<label>Кол-во<input type="text" inputmode="numeric" autocomplete="off" data-digits="1" data-pieces value="'+esc(p.pieces)+'"></label>'+
+     '<button type="button" class="tbRemove" data-remove="'+i+'" aria-label="Удалить позицию">Удалить</button></div>';
+   }).join('')||'<p class="tbHint" style="padding:12px;margin:0">Закрытых пачек пока нет</p>')+'</div>'+
+   '<button class="tbBtn" data-add style="margin-top:9px">+ Позиция</button>'+
+   '<h4>Уголь и мундштуки · склад сервиса</h4><div class="tbTable">'+cons.map(function(i){
+    return '<div class="tbRow"><strong>'+esc(i.name)+'</strong><label>'+esc(i.unit)+'<input type="text" inputmode="numeric" autocomplete="off" data-digits="'+(i.category==='mouthpiece'?2:3)+'" data-warehouse-qty="'+esc(i.itemId)+'" value="'+esc(draft.get(i.itemId).warehouseQty)+'" placeholder="Не считали"></label></div>';
+   }).join('')+'</div>';
+   area.querySelectorAll('[data-pack-line]').forEach(function(el,i){el.querySelector('[data-item]').value=packs[i].itemId||''});
+   area.querySelectorAll('[data-remove]').forEach(function(btn){btn.onclick=function(){capture();packs.splice(Number(btn.dataset.remove),1);render()}});
+   q('[data-add]').onclick=function(){capture();packs.push({itemId:'',pack:200,pieces:1});render()};
+  }
+  addNumericClearButtons(area);
+ }
+ function crTbToday(){
+  // Always calculate the date in Kazakhstan; older server versions may not return model.today.
+  var parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Almaty',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  var values={};parts.forEach(function(x){values[x.type]=x.value});
+  return values.year+'-'+values.month+'-'+values.day;
+ }
+ function create(){
+  if(busy||!root||!model||model.active)return;
+  if(!navigator.onLine&&(!Array.isArray(model.template)||!model.template.length)){
+   root.insertAdjacentHTML('beforeend','<p class="tbError">Для создания без интернета сначала загрузите последние данные инвентаризации онлайн.</p>');
+   return;
+  }
+  var base=/^\d{4}-\d{2}-\d{2}$/.test(String(model.today||''))?model.today:crTbToday();
+  function shortDay(iso){return new Date(iso+'T12:00:00Z').toLocaleDateString('ru-RU',{timeZone:'UTC',day:'numeric',month:'long'})}
+  function shifted(offset){var d=new Date(base+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+offset);return d.toISOString().slice(0,10)}
+  var day=base;
+  var overlay=document.createElement('div');
+  overlay.className='tbDialogBackdrop';
+  overlay.innerHTML='<div class="tbDialog" role="dialog" aria-modal="true" aria-labelledby="tbCreateTitle">'+
+   '<h4 id="tbCreateTitle">Создать инвентаризацию?</h4>'+
+   '<div class="tbDateChoices" role="group" aria-label="Дата инвентаризации">'+
+   '<button type="button" class="tbBtn" data-day="-1">'+esc(shortDay(shifted(-1)))+'</button>'+
+   '<button type="button" class="tbBtn active" data-day="0">'+esc(shortDay(base))+'</button>'+
+   '<button type="button" class="tbBtn" data-day="1">'+esc(shortDay(shifted(1)))+'</button></div>'+
+   '<p class="tbSelectedDate">Дата: <strong data-date>'+esc(date(day))+'</strong></p>'+
+   '<p>Позиции сформируются из предыдущей завершённой инвентаризации и приходов.</p>'+
+   '<p class="tbError" role="status" aria-live="polite"></p>'+
+   '<div class="tbDialogActions"><button type="button" class="tbBtn" data-cancel>Отмена</button>'+
+   '<button type="button" class="tbBtn tbConfirm" data-confirm>Создать</button></div></div>';
+  root.appendChild(overlay);
+  var cancel=overlay.querySelector('[data-cancel]'),ok=overlay.querySelector('[data-confirm]');
+  overlay.querySelectorAll('[data-day]').forEach(function(button){
+   button.onclick=function(){
+    if(busy)return;
+    day=shifted(Number(button.dataset.day));
+    overlay.querySelector('[data-date]').textContent=date(day);
+    overlay.querySelectorAll('[data-day]').forEach(function(b){b.classList.toggle('active',b===button)});
+    var error=overlay.querySelector('.tbError');if(error)error.textContent='';
+   };
+  });
+  function close(){if(busy)return;overlay.remove()}
+  cancel.onclick=close;overlay.onclick=function(e){if(e.target===overlay)close()};
+  overlay.onkeydown=function(e){if(e.key==='Escape')close()};
+  ok.focus();
+  ok.onclick=function(){
+   if(busy)return;
+   busy=true;ok.disabled=true;cancel.disabled=true;ok.textContent='Создаём…';
+   api.call('crStaffTobaccoCreate',{day:day},function(){
+    busy=false;overlay.remove();refresh();
+   },function(err){
+    busy=false;ok.disabled=false;cancel.disabled=false;ok.textContent='Создать';
+    var error=overlay.querySelector('.tbError');if(error)error.textContent=String(err||'Не удалось создать инвентаризацию');
+   });
+  };
+ }
+ function buildLinesForSave(){
+  var grouped=new Map();
+  packs.forEach(function(p){var list=grouped.get(p.itemId)||[];list.push({pack:Number(p.pack),pieces:Number(p.pieces)});grouped.set(p.itemId,list)});
+  return model.lines.map(function(i){var v=draft.get(i.itemId);
+   if(i.category==='tobacco'){
+    var gross=v.serviceGross===''||v.serviceGross===null?null:Number(v.serviceGross);
+    return {itemId:i.itemId,serviceGross:gross,serviceTare:gross===0?0:(v.serviceTare===''?null:Number(v.serviceTare)),warehousePacks:grouped.get(i.itemId)||[]};
+   }
+   return {itemId:i.itemId,serviceQty:v.serviceQty===''?null:Number(v.serviceQty),warehouseQty:v.warehouseQty===''?null:Number(v.warehouseQty)};
+  });
+ }
+ function fillMissingZeros(){
+  if(busy||!model||!model.active)return;
+  capture();
+  if(packs.some(function(p){return !p.itemId||![100,125,200,250].includes(Number(p.pack))||!Number.isInteger(Number(p.pieces))||Number(p.pieces)<1||Number(p.pieces)>9})){
+   message('Сначала заполните или удалите незавершённые позиции закрытых пачек');return;
+  }
+  var missing=0;
+  model.lines.forEach(function(i){
+   var v=draft.get(i.itemId);if(!v)return;
+   if(i.category==='tobacco'){if(v.serviceGross===''||v.serviceGross===null||v.serviceGross===undefined)missing++}
+   else{
+    if(v.serviceQty===''||v.serviceQty===null||v.serviceQty===undefined)missing++;
+    if(v.warehouseQty===''||v.warehouseQty===null||v.warehouseQty===undefined)missing++;
+   }
+  });
+  if(!missing){message('Все поля уже заполнены');return}
+  var overlay=document.createElement('div');
+  overlay.className='tbDialogBackdrop';
+  overlay.innerHTML='<div class="tbDialog" role="dialog" aria-modal="true" aria-labelledby="tbZeroTitle">'+
+   '<h4 id="tbZeroTitle">Заполнить пустые нулями?</h4>'+
+   '<p>Незаполненных полей: <strong>'+missing+'</strong>.</p>'+
+   '<p>Они будут заполнены нулями и сохранены для Сервиса и Склада. Уже введённые значения останутся без изменений.</p>'+
+   '<div class="tbDialogActions"><button type="button" class="tbBtn" data-zero-cancel>Отмена</button>'+
+   '<button type="button" class="tbBtn tbConfirm" data-zero-confirm>Заполнить</button></div></div>';
+  root.appendChild(overlay);
+  var cancel=overlay.querySelector('[data-zero-cancel]');
+  cancel.onclick=function(){overlay.remove()};
+  overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.remove()});
+  overlay.querySelector('[data-zero-confirm]').onclick=function(){
+   overlay.remove();
+   applyMissingZeros();
+  };
+ }
+ function applyMissingZeros(){
+  if(busy||!model||!model.active)return;
+  model.lines.forEach(function(i){
+   var v=draft.get(i.itemId);if(!v)return;
+   if(i.category==='tobacco'){
+    if(v.serviceGross===''||v.serviceGross===null||v.serviceGross===undefined)v.serviceGross='0';
+    if(Number(v.serviceGross)===0)v.serviceTare='0';
+   }else{
+    if(v.serviceQty===''||v.serviceQty===null||v.serviceQty===undefined)v.serviceQty='0';
+    if(v.warehouseQty===''||v.warehouseQty===null||v.warehouseQty===undefined)v.warehouseQty='0';
+   }
+  });
+  var lines=buildLinesForSave(),rev=model.revision;
+  busy=true;
+  var saveBtn=q('[data-save]'),zeroBtn=q('[data-fill-zeros]');
+  if(saveBtn)saveBtn.disabled=true;if(zeroBtn)zeroBtn.disabled=true;
+  message('');
+  api.call('crStaffTobaccoSave',{id:model.id,zone:'service',revision:rev,lines:lines},function(){
+   api.call('crStaffTobaccoSave',{id:model.id,zone:'warehouse',revision:rev,lines:lines},function(){
+    busy=false;refresh();
+   },function(err){busy=false;message('Сервис сохранён, но Склад не сохранён: '+err);var b=q('[data-save]'),z=q('[data-fill-zeros]');if(b)b.disabled=false;if(z)z.disabled=false});
+  },function(err){busy=false;message(err);var b=q('[data-save]'),z=q('[data-fill-zeros]');if(b)b.disabled=false;if(z)z.disabled=false});
+ }
+ function save(){
+  if(busy||!model||!model.active)return;
+  capture();
+  if(zone==='warehouse'&&packs.some(function(p){return !p.itemId||![100,125,200,250].includes(Number(p.pack))||!Number.isInteger(Number(p.pieces))||Number(p.pieces)<1})){
+   message('Для каждой закрытой пачки укажите вкус, фасовку и количество');return;
+  }
+  var invalid=root.querySelector('[data-content] input[data-digits]')&&Array.from(root.querySelectorAll('[data-content] input[data-digits]')).find(function(el){
+   var v=String(el.value||'');
+   if(!v)return false;
+   var max=Number(el.dataset.digits||3);
+   var regex=/^[0-9]+$/;
+   var whole=v.split('.')[0];
+   return !regex.test(v)||whole.length>max||(el.hasAttribute('data-pieces')&&Number(v)<1);
+  });
+  if(invalid){message('Проверьте количество цифр в поле');invalid.focus();return}
+  var lines=buildLinesForSave();
+  busy=true;q('[data-save]').disabled=true;message('');
+  var rev=model.revision;
+  api.call('crStaffTobaccoSave',{id:model.id,zone:zone,revision:rev,lines:lines},function(r){
+   busy=false;refresh();
+  },function(err){busy=false;var b=q('[data-save]');if(b)b.disabled=false;message(err)});
+ }
+ function refresh(){
+  if(!root||busy)return;
+  var current=++epoch;
+  root.innerHTML='<p class="tbHint">Загружаем инвентаризацию…</p>';
+  api.call('crStaffTobaccoActive',{},function(r){
+   if(current!==epoch||!api.isActive())return;
+   model=r;draft=new Map();packs=[];
+   (r.lines||[]).forEach(function(i){
+    draft.set(i.itemId,{serviceGross:i.serviceGross??'',serviceTare:i.serviceTare??'',serviceQty:i.serviceQty??'',warehouseQty:i.warehouseQty??''});
+    (i.warehousePacks||[]).forEach(function(p){packs.push({itemId:i.itemId,pack:p.pack,pieces:p.pieces})});
+   });
+   render();
+  },function(err){if(current===epoch&&root)root.innerHTML='<p class="tbError">'+esc(err)+'</p><button class="tbBtn" data-refresh>Повторить</button>';if(q('[data-refresh]'))q('[data-refresh]').onclick=refresh});
+ }
+ return {mount:function(node){root=node;opened=false;refresh()},refresh:refresh,clear:function(){stopScan();scanOpen=false;epoch++;root=null;model=null;draft=null;packs=[];opened=false}};
+};
+</script>
+</head><body class="staffInside" data-staff-theme="light">
+<main><header class="appHeader"><span class="appVersion">v1.3.2</span><img class="appLogo" alt="Cocktail Room by Dacha" src="data:image/png;base64,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"><button id="retry" class="headerRefresh" type="button" title="Обновить и синхронизировать" aria-label="Обновить и синхронизировать"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.7 6"/><path d="M20 4v7h-7"/></svg></button></header>
+<div id="status" aria-live="polite">Открываем сохранённые данные…</div>
+<section id="setup" hidden><h3>Активация устройства</h3><label for="bridgeUrl">Сервер синхронизации</label><input id="bridgeUrl" type="url" inputmode="url" placeholder="https://...workers.dev" autocomplete="url"><label for="key">Ключ устройства (вводится один раз)</label>
+<input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+<button id="activate">Активировать</button><p>После активации PIN и вход при каждом открытии не требуются. Не передавайте ключ посторонним.</p><div id="setupError" role="alert"></div></section>
+<section id="inventory" class="staffTobacco" hidden></section></main>
+<script src="./app.js?v=1.3.2" defer></script></body></html>
