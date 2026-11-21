@@ -1,111 +1,180 @@
+
+(function(){
 'use strict';
-const $=id=>document.getElementById(id);
-const DB='tobacco-inventory-scanner-v1';
-let db=null,scanner=null,scanning=false,stopPending=false,scanLocked=false;
-const setStatus=t=>{$('status').textContent=t};
-const makeId=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(16).slice(2);
-function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('records',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
-function transaction(mode,fn){return new Promise((resolve,reject)=>{const tx=db.transaction('records',mode),store=tx.objectStore('records');let req;try{req=fn(store)}catch(e){reject(e);return}tx.oncomplete=()=>resolve(req?.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}
-function normalizeCode(raw){
- const cleaned=String(raw??'').replace(/^\]d[12]/,'').replace(/^\]Q3/,'').trim();
- const candidates=[];
- const add=value=>{if(/^\d{14}$/.test(value)&&!candidates.includes(value))candidates.push(value)};
- // Verified legacy parser from datamatrix-lab1: Kazakhstan tobacco marking
- // is 29 characters: 14-digit GTIN, 7-character serial, 8-character check.
- if(/^\d{14}[\s\S]{15}$/.test(cleaned))add(cleaned.slice(0,14));
- // Standard GS1 Data Matrix with AI 01; permit prefix and GS separators.
- for(const match of cleaned.matchAll(/(?:\(01\)|(?:^|\x1d)01)\s*(\d{14})/g))add(match[1]);
- if(/^01\d{14}/.test(cleaned))add(cleaned.slice(2,16));
- if(/^\d{13}$/.test(cleaned))add('0'+cleaned);
- if(/^\d{14}$/.test(cleaned))add(cleaned);
- return candidates.find(validGtin)||null;
-}
-function validGtin(s){
- if(!/^\d{14}$/.test(s))return false;
- let sum=0;for(let i=12;i>=0;i--)sum+=Number(s[i])*((12-i)%2===0?3:1);
- return (10-sum%10)%10===Number(s[13]);
-}
-function renderRow(r){
- const li=document.createElement('li'),left=document.createElement('div'),title=document.createElement('div'),sub=document.createElement('div'),right=document.createElement('div');
- title.className='item-title';title.textContent=r.flavor||'Не указан вкус';sub.className='item-sub';sub.textContent=r.gtin+' · '+new Date(r.createdAt).toLocaleString('ru-RU');
- right.className='item-weight';right.textContent=r.weight+' г';left.append(title,sub);li.append(left,right);return li;
-}
-async function rows(){const all=await transaction('readonly',s=>s.getAll());return all.sort((a,b)=>b.createdAt-a.createdAt)}
-async function refresh(){const all=await rows();$('count').textContent=String(all.length);$('items').replaceChildren(...all.map(renderRow))}
-function clearEntry(){$('code').value='';$('flavor').value='';$('weight').value=''}
-let lastUnrecognized='';
-function scanFound(raw){
- if(scanLocked)return;
- const decoded=String(raw??'');
- const code=normalizeCode(decoded);
- if(!code){
-  // Short, accidental decodes are not tobacco labels; leave camera open.
-  if(decoded.length<13)return;
-  lastUnrecognized=decoded;
-  $('result').textContent='Код прочитан, но GTIN не выделен. Данные: '+decoded.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,64);
-  $('copyRaw').hidden=false;
-  return;
- }
- scanLocked=true;
- lastUnrecognized='';
- $('copyRaw').hidden=true;
- $('code').value=code;
- $('result').textContent='GTIN определён: '+code;
- stopScanner().then(()=>$('weight').focus());
-}
-async function loadDecoder(){
- if(window.Html5Qrcode)return;
- const script=document.createElement('script');script.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
- await new Promise((resolve,reject)=>{script.onload=resolve;script.onerror=()=>reject(Error('Библиотека сканера недоступна. Проверьте интернет.'));document.head.append(script)});
- // Cache the decoder when first loaded so subsequent PWA launches may work offline.
- try{const cache=await caches.open('tobacco-decoder-v1');await cache.add(script.src)}catch(_){}
-}
-async function startScanner(){
- if(scanning||stopPending)return;
- scanLocked=false;
+var state={secret:'',bridgeUrl:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
+var status=document.getElementById('status');
+function setStatus(s){status.textContent=s;status.dataset.state=state.conflict?'conflict':!navigator.onLine?'offline':syncing||state.queue.length?'syncing':'online'}
+function openDb(){return new Promise(function(resolve,reject){
+ var r=indexedDB.open('cr-temp-tobacco-v1',1);
+ r.onupgradeneeded=function(){r.result.createObjectStore('kv')};
+ r.onsuccess=function(){resolve(r.result)};r.onerror=function(){reject(r.error)};
+})}
+function getSaved(){return new Promise(function(resolve,reject){
+ var tx=db.transaction('kv','readonly'),r=tx.objectStore('kv').get(storeKey);
+ r.onsuccess=function(){resolve(r.result||null)};r.onerror=function(){reject(r.error)};
+})}
+function persist(){return new Promise(function(resolve,reject){
+ var tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(state,storeKey);
+ tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)};
+})}
+async function rpc(method,payload){
+ if(!navigator.onLine)throw Error('Нет интернета');
+ if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1}[method])throw Error('Недоступная операция');
+ if(!state.bridgeUrl)throw Error('Укажите HTTPS-сервер синхронизации');
+ var controller=new AbortController(),timer=setTimeout(function(){controller.abort()},25000);
  try{
-  $('start').disabled=true;setStatus('Запуск камеры…');
-  await loadDecoder();
-  if(!window.Html5Qrcode)throw Error('Сканер не загрузился');
-  if(!navigator.mediaDevices?.getUserMedia)throw Error('Нет доступа к камере: откройте PWA по HTTPS');
-  $('scanner').hidden=false;
-  const formats=[Html5QrcodeSupportedFormats.DATA_MATRIX,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A];
-  // Explicit ZXing decoder: experimental native BarcodeDetector can omit Data Matrix.
-  scanner=new Html5Qrcode('reader',{formatsToSupport:formats,verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:false}});
-  // Square viewfinder suits tiny 2D codes; 1080p source improves fine-module resolution.
-  const viewport=Math.min(Math.max(window.innerWidth-50,220),440);
-  const side=Math.min(280,Math.max(170,viewport-45));
-  await scanner.start({facingMode:'environment'},{fps:15,qrbox:{width:side,height:side},aspectRatio:1,videoConstraints:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}},scanFound,()=>{});
-  const video=document.querySelector('#reader video');
-  if(video){video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');video.muted=true;video.controls=false;}
-  scanning=true;$('stop').disabled=false;setStatus('Наведите камеру на штрихкод или Data Matrix');
- }catch(e){setStatus('Камера: '+(e?.message||e));$('scanner').hidden=true;scanner=null}
- finally{$('start').disabled=false}
+  var res=await fetch(state.bridgeUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret})}),signal:controller.signal,cache:'no-store'});
+  if(!res.ok)throw Error('HTTP '+res.status);
+  var body=await res.json();
+  if(body.ok!==true)throw Error(String(body.error||'Ошибка сервера'));
+  return body.result;
+ }catch(e){throw Error(e&&e.name==='AbortError'?'Сервер не отвечает':String(e&&e.message||e))}
+ finally{clearTimeout(timer)}
 }
-async function stopScanner(){
- if(stopPending)return;stopPending=true;
- try{if(scanner){if(scanning)await scanner.stop();scanner.clear()}}catch(_){}
- finally{scanner=null;scanning=false;stopPending=false;$('scanner').hidden=true;$('stop').disabled=true;setStatus('Готово к сканированию')}
+function clone(obj){return JSON.parse(JSON.stringify(obj))}
+function value(v){return v===null||v===undefined||v===''?null:Number(v)}
+function localApply(payload){
+ var snapshot=state.snapshot;if(!snapshot||!snapshot.active)throw Error('Нет открытой инвентаризации');
+ var byId=new Map(snapshot.lines.map(function(x){return [String(x.itemId),x]}));
+ payload.lines.forEach(function(x){
+  var current=byId.get(String(x.itemId));if(!current)return;
+  if(payload.zone==='service'){
+   if(current.category==='tobacco'){
+    current.serviceGross=value(x.serviceGross);
+    current.serviceTare=current.serviceGross===null?null:(current.serviceGross===0?0:(value(x.serviceTare)===null?Number(current.tare||0):value(x.serviceTare)));
+   }else current.serviceQty=value(x.serviceQty);
+  }else if(current.category==='tobacco')current.warehousePacks=clone(x.warehousePacks||[]);
+  else current.warehouseQty=value(x.warehouseQty);
+ });
 }
-async function save(){
- const raw=$('code').value.trim(),gtin=normalizeCode(raw),weight=Number($('weight').value.replace(',','.'));
- if(!gtin||!validGtin(gtin)){setStatus('Введите правильный GTIN (EAN-13 или 14 цифр, контрольная цифра обязательна)');return}
- if($('weight').value.trim()===''||!Number.isFinite(weight)||weight<0||weight>100000){setStatus('Введите корректный вес');return}
- const flavor=$('flavor').value.trim();
- if(!flavor){setStatus('Укажите вкус. Автоматическая привязка появится после подключения каталога');return}
- await transaction('readwrite',s=>s.put({id:makeId(),gtin,flavor,weight,createdAt:Date.now()}));
- clearEntry();await refresh();setStatus('Сохранено на этом iPhone · не отправлено в Google Sheets');
+function sameZone(remote,payload){
+ if(!remote||!remote.active)return false;
+ var byId=new Map(remote.lines.map(function(x){return [String(x.itemId),x]}));
+ return payload.lines.every(function(x){
+  var r=byId.get(String(x.itemId));if(!r)return false;
+  if(payload.zone==='service')
+   return r.category==='tobacco'?
+    (value(r.serviceGross)===value(x.serviceGross)&&
+     value(r.serviceTare)===(
+      value(x.serviceGross)===null?null:(value(x.serviceGross)===0?0:
+      (value(x.serviceTare)===null?Number(r.tare||0):value(x.serviceTare))))):
+    value(r.serviceQty)===value(x.serviceQty);
+  return r.category==='tobacco'?
+   JSON.stringify(r.warehousePacks||[])===JSON.stringify(x.warehousePacks||[]):
+   value(r.warehouseQty)===value(x.warehouseQty);
+ });
 }
-async function exportJson(){const all=await rows();if(!all.length){setStatus('Нет записей для экспорта');return}
- const blob=new Blob([JSON.stringify({schema:'cr-tobacco-scanner-v1',records:all},null,2)],{type:'application/json'});
- const href=URL.createObjectURL(blob),a=document.createElement('a');a.href=href;a.download='tobacco-inventory-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(href),5000)}
-async function init(){
- if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
- try{db=await openDb();await refresh();setStatus('Тестовая PWA · данные хранятся локально; синхронизация с Google Sheets ещё не подключена')}catch(e){setStatus('Ошибка локального хранилища: '+e.message);return}
- $('copyRaw').onclick=async()=>{try{await navigator.clipboard.writeText(lastUnrecognized);setStatus('Данные кода скопированы')}catch(e){setStatus('Не удалось скопировать: '+e.message)}};
- $('start').onclick=startScanner;$('stop').onclick=stopScanner;$('cancel').onclick=clearEntry;
- $('save').onclick=()=>save().catch(e=>setStatus('Ошибка записи: '+e.message));
- $('export').onclick=()=>exportJson().catch(e=>setStatus('Ошибка экспорта: '+e.message));
- document.addEventListener('visibilitychange',()=>{if(document.hidden&&scanning)stopScanner()});
+function showStatus(){
+ if(state.conflict){setStatus('Конфликт синхронизации: '+state.conflict);return}
+ if(state.queue.length){setStatus((navigator.onLine?'Ожидает отправки: ':'Офлайн · не отправлено: ')+state.queue.length);return}
+ setStatus(navigator.onLine?'Синхронизировано':'Офлайн · сохранено на iPhone');
 }
-init();
+async function flush(){
+ if(syncing||!state.secret||!navigator.onLine||!state.queue.length||state.conflict)return;
+ syncing=true;
+ try{
+  var remote=await rpc('crStaffTobaccoActive',{});
+  while(state.queue.length&&navigator.onLine){
+   var op=state.queue[0];
+   if(op.method==='create'){
+    await rpc('crStaffTobaccoCreate',{day:op.day,operationId:op.id,queuedAt:op.queuedAt});
+    remote=await rpc('crStaffTobaccoActive',{});
+   }else{
+    if(!sameZone(remote,op.payload)){
+     if(!remote.active||remote.id!==op.payload.id||remote.revision!==op.baseRevision)
+      throw Error('Изменения на сервере отличаются от исходной версии. Нужна ручная проверка');
+     await rpc('crStaffTobaccoSave',Object.assign({},op.payload,{revision:remote.revision}));
+     remote=await rpc('crStaffTobaccoActive',{});
+    }
+   }
+   state.queue.shift();
+   if(state.queue.length&&state.queue[0].method==='save')state.queue[0].baseRevision=remote.revision;
+   await persist();
+  }
+  if(!state.queue.length){state.snapshot=remote;await persist()}
+ }catch(e){
+  var message=String(e&&e.message||e);
+  if(/ручная проверка|уже завершена|несколько активных|неполный список|изменил|изменилось/.test(message)){
+   state.conflict=message;await persist();
+  }
+  setStatus('Не синхронизировано · '+message);
+ }finally{syncing=false;showStatus()}
+}
+var api={
+ isActive:function(){return active},
+ call:function(method,payload,success,failure){
+  (async function(){
+   try{
+    if(!state.secret)throw Error('Устройство не активировано');
+    if(method==='crStaffTobaccoActive'){
+     if(!state.queue.length&&navigator.onLine){
+      try{state.snapshot=await rpc(method,{});await persist()}
+      catch(e){if(!state.snapshot)throw e}
+     }
+     if(!state.snapshot)throw Error('Сначала откройте приложение с интернетом, чтобы загрузить инвентаризацию');
+     success(clone(state.snapshot));showStatus();return;
+    }
+    if(state.conflict)throw Error('Есть конфликт синхронизации; редактирование временно заблокировано');
+    if(method==='crStaffTobaccoCreate'){
+     if(!state.snapshot||state.snapshot.active)throw Error('Обновите состояние инвентаризации');
+     if(!state.snapshot.template||!state.snapshot.template.length){
+      if(!navigator.onLine)throw Error('Нужна предварительная загрузка списка онлайн');
+      await rpc(method,payload);
+      state.snapshot=await rpc('crStaffTobaccoActive',{});
+     }else{
+      var id=crypto.randomUUID(),queuedAt=Date.now();
+      state.snapshot={ok:true,active:true,id:id,day:payload.day,revision:'',lines:clone(state.snapshot.template),barcodes:clone(state.snapshot.barcodes||[])};
+      state.queue.push({method:'create',id:id,day:payload.day,queuedAt:queuedAt});
+     }
+    }else if(method==='crStaffTobaccoSave'){
+     if(!state.snapshot||!state.snapshot.active)throw Error('Нет активной инвентаризации');
+     state.queue.push({method:'save',payload:clone(payload),baseRevision:state.snapshot.revision});
+     localApply(payload);
+    }else throw Error('Недоступная операция');
+    await persist();success({ok:true,queued:state.queue.length>0});
+    showStatus();flush();
+   }catch(e){failure(e&&e.message||String(e))}
+  })();
+ }
+};
+async function start(){
+ try{
+  db=await openDb();var saved=await getSaved();if(saved)state=Object.assign(state,saved);
+  if(!state.secret||!state.bridgeUrl){
+   document.getElementById('setup').hidden=false;
+    document.getElementById('bridgeUrl').value=state.bridgeUrl||'';
+   setStatus('Первичная активация устройства');
+   document.getElementById('activate').onclick=async function(){
+    var key=document.getElementById('key').value.trim();
+     var bridge=document.getElementById('bridgeUrl').value.trim().replace(/\/+$/,'');
+     if(!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(bridge)){document.getElementById('setupError').textContent='Укажите правильный HTTPS-адрес';return}
+     state.bridgeUrl=bridge;
+    if(!/^[A-Za-z0-9]{8}$/.test(key)){document.getElementById('setupError').textContent='Введите 8 латинских букв и цифр';return}
+    state.secret=key;
+    try{state.snapshot=await rpc('crStaffTobaccoActive',{});await persist();launch()}
+    catch(e){state.secret='';document.getElementById('setupError').textContent=e.message}
+   };
+   return;
+  }
+  launch();
+ }catch(e){setStatus('Локальное хранилище недоступно: '+e.message)}
+}
+function launch(){
+ document.getElementById('setup').hidden=true;
+ document.getElementById('inventory').hidden=false;
+ ui=window.crStaffTobaccoFactory(api);
+ ui.mount(document.getElementById('inventory'));
+ showStatus();flush();
+}
+document.getElementById('retry').onclick=function(){
+ if(state.conflict){setStatus('Конфликт: данные сохранены локально');return}
+ if(ui && state.snapshot && state.snapshot.active && !window.confirm('Обновить данные? Несохранённые значения в полях будут потеряны.'))return;
+ if(state.queue.length){flush();return}
+ if(ui)ui.refresh();else flush();
+};
+window.addEventListener('online',function(){showStatus();flush()});
+window.addEventListener('offline',showStatus);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)flush()});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(function(){});
+start();
+})();
