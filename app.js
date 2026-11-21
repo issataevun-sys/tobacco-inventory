@@ -20,7 +20,7 @@ function persist(){return new Promise(function(resolve,reject){
 
 async function rpc(method,payload){
  if(!navigator.onLine)throw Error('Нет интернета');
- if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1}[method])throw Error('Недоступная операция');
+ if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1,crStaffTobaccoBarcodeSave:1}[method])throw Error('Недоступная операция');
  if(!state.bridgeUrl||!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(state.bridgeUrl))throw Error('Не указан адрес сервера синхронизации');
  const controller=new AbortController(),timer=setTimeout(function(){controller.abort()},25000);
  try{
@@ -117,6 +117,18 @@ var api={
      }
      if(!state.snapshot)throw Error('Сначала откройте приложение с интернетом, чтобы загрузить инвентаризацию');
      success(clone(state.snapshot));showStatus();return;
+    }
+    if(method==='crStaffTobaccoBarcodeSave'){
+     // Catalog writes are strictly online and never join the inventory offline queue.
+     if(!navigator.onLine)throw Error('Для добавления штрихкода требуется интернет');
+     var answer=await rpc(method,payload);
+     if(state.snapshot){
+      state.snapshot.barcodes=state.snapshot.barcodes||[];
+      if(!state.snapshot.barcodes.some(function(x){return x.barcode===answer.barcode}))
+       state.snapshot.barcodes.push({barcode:answer.barcode,itemId:answer.itemId,pack:answer.pack});
+      await persist();
+     }
+     success(answer);showStatus();return;
     }
     if(state.conflict)throw Error('Есть конфликт синхронизации; редактирование временно заблокировано');
     if(method==='crStaffTobaccoCreate'){
