@@ -16,19 +16,54 @@ function persist(){return new Promise(function(resolve,reject){
  var tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(state,storeKey);
  tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)};
 })}
+
+var bridgeWindow=null,bridgeFrame=null,bridgeSession='',bridgePending=new Map(),bridgeInit=null;
+function uuid(){
+ if(self.crypto&&crypto.randomUUID)return crypto.randomUUID();
+ var bytes=new Uint8Array(16);crypto.getRandomValues(bytes);
+ return Array.from(bytes).map(function(x){return x.toString(16).padStart(2,'0')}).join('');
+}
+function ensureBridge(){
+ if(bridgeInit)return bridgeInit;
+ bridgeSession=uuid();
+ bridgeInit=new Promise(function(resolve,reject){
+  var timeout=setTimeout(function(){reject(Error('Не удалось подключиться к Google Apps Script. Проверьте адрес и доступ к веб-приложению.'))},20000);
+  function onReady(event){
+   var d=event.data||{};
+   if(d.type!=='cr-inventory-bridge'||d.session!==bridgeSession||!d.ready)return;
+   if(!/^https:\/\/(?:script\.googleusercontent\.com|script\.google\.com)(?::443)?$/.test(event.origin))return;
+   bridgeWindow=event.source;
+   clearTimeout(timeout);window.removeEventListener('message',onReady);resolve();
+  }
+  window.addEventListener('message',onReady);
+  bridgeFrame=document.createElement('iframe');
+  bridgeFrame.title='Синхронизация инвентаризации';
+  bridgeFrame.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0';
+  bridgeFrame.src=state.bridgeUrl+'?bridge=1&session='+encodeURIComponent(bridgeSession);
+  document.body.appendChild(bridgeFrame);
+ }).catch(function(e){bridgeInit=null;if(bridgeFrame)bridgeFrame.remove();bridgeFrame=null;bridgeWindow=null;throw e});
+ return bridgeInit;
+}
+window.addEventListener('message',function(event){
+ var data=event.data||{};
+ if(!bridgeWindow||event.source!==bridgeWindow||data.session!==bridgeSession||data.type!=='cr-inventory-bridge'||!data.id)return;
+ var pending=bridgePending.get(data.id);
+ if(!pending)return;
+ bridgePending.delete(data.id);clearTimeout(pending.timer);
+ if(data.ok===true)pending.resolve(data.result);
+ else pending.reject(Error(String(data.error||'Ошибка GAS')));
+});
 async function rpc(method,payload){
  if(!navigator.onLine)throw Error('Нет интернета');
  if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1}[method])throw Error('Недоступная операция');
- if(!state.bridgeUrl)throw Error('Укажите HTTPS-сервер синхронизации');
- var controller=new AbortController(),timer=setTimeout(function(){controller.abort()},25000);
- try{
-  var res=await fetch(state.bridgeUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret})}),signal:controller.signal,cache:'no-store'});
-  if(!res.ok)throw Error('HTTP '+res.status);
-  var body=await res.json();
-  if(body.ok!==true)throw Error(String(body.error||'Ошибка сервера'));
-  return body.result;
- }catch(e){throw Error(e&&e.name==='AbortError'?'Сервер не отвечает':String(e&&e.message||e))}
- finally{clearTimeout(timer)}
+ if(!state.bridgeUrl)throw Error('Укажите ссылку Google Apps Script');
+ await ensureBridge();
+ return new Promise(function(resolve,reject){
+  var id=uuid();
+  var timer=setTimeout(function(){bridgePending.delete(id);reject(Error('Превышено время ответа Google Apps Script'))},30000);
+  bridgePending.set(id,{resolve:resolve,reject:reject,timer:timer});
+  bridgeWindow.postMessage({type:'cr-inventory-request',session:bridgeSession,id:id,method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret})},'*');
+ });
 }
 function clone(obj){return JSON.parse(JSON.stringify(obj))}
 function value(v){return v===null||v===undefined||v===''?null:Number(v)}
