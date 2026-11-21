@@ -1,7 +1,7 @@
 /* v1.2.0: standalone inventory shell and cached ZXing decoder. */
-const SHELL_CACHE='cr-inventory-pwa-v1.3.1';
+const SHELL_CACHE='cr-inventory-pwa-v1.3.9';
 const DECODER_CACHE='cr-inventory-zxing-v1';
-const SHELL=['./','./index.html','./app.js','./icon.svg','./manifest.webmanifest'];
+const SHELL=['./','./index.html','./app.js','./icon.png','./manifest.webmanifest'];
 const DECODERS=new Set([
  'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
  'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js'
