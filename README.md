@@ -1,34 +1,33 @@
-# Tobacco Inventory — iPhone PWA (prototype)
+# Cocktail Room · iPhone Inventory PWA v1.2.0
 
-Standalone GitHub Pages PWA for testing **EAN-13 + Data Matrix** reading and local weight entries on a real iPhone.
+Это **полная оболочка инвентаризации** на основе GAS-приложения `../Index.html` + `../TobaccoView.html`, а не отдельный локальный сканер.
 
-## What works in source
+## Реализовано
+- Те же инвентаризации, вкладки «Сервис» и «Склад», уголь/мундштуки, закрытые пачки, создание дат ±1 день, кнопки заполнения нулями, ручной ввод.
+- В «Сервисе» — сканер Data Matrix / EAN-13, перенесённый из подтверждённого сканера `issataevun-sys/tobacco-inventory` v1.0.2: html5-qrcode 2.3.8, ZXing (без native BarcodeDetector), квадратная рамка, 1080p.
+- Казахстанская маркировка 14 GTIN + 7 серийных символов + 8 проверочных символов и GS1 AI 01. GTIN сопоставляется с действующим листом `TobaccoBarcodes` в существующей TOBACCO 2.0; новые справочники не создаются.
+- Вес вводится в существующее поле **«Вес с тарой»**, следующим сканированием можно продолжать; итог сохраняется штатной кнопкой «Сохранить».
+- IndexedDB и офлайн-очередь из исходного приложения; автоматическая отправка после восстановления связи, если нет конфликта.
+- Service Worker для PWA-оболочки и локального кеша html5-qrcode после первой загрузки.
 
-- PWA metadata, offline shell (Service Worker), monochrome/yellow icon and iOS standalone mode.
-- Camera scan using html5-qrcode, EAN-13 / Data Matrix, extraction and validation of GS1 GTIN, manual entry fallback.
-- Local-only IndexedDB records, weight entry, on-device list and JSON export.
-- Scanner dependency is loaded from pinned external CDN once and cached for later launches. A first online camera test is necessary.
-- The code does **not** call Google Apps Script or Google Sheets. No authentication or access to operational data is included in public-hosted assets.
+## Установка серверной части (один раз)
+1. В **отдельном проекте** Google Apps Script для инвентаризации обновить `Code.gs`, `Tobacco.gs`, `TobaccoView.html`, `Index.html` из `cocktail-room-2/develop/apps/inventory-iphone` (для фактической работы PWA критичны Code.gs с `doPost` и Tobacco.gs с `TobaccoBarcodes`).
+2. Script Properties: `CR_TEMP_TOBACCO_DB_ID`, `CR_TEMP_CATALOG_ID`, `CR_TEMP_DEVICE_SECRET` — существующие, никогда не публикуйте ключ. Сохраните новую версию веб-развертывания GAS с URL вида `https://script.google.com/macros/s/.../exec`. Не используйте `/dev`.
+3. Создайте Cloudflare Worker с исходником `cocktail-room-2/develop/apps/inventory-iphone/pwa/bridge-worker.js`. Задайте **Worker Variables**:
+   - `GAS_WEB_APP_URL` = полный `.../exec` URL проекта GAS
+   - `PWA_ORIGIN` = `https://issataevun-sys.github.io`
+   Не записывайте запросы/ответы Worker с секретами в журналы.
+4. Задеплойте Worker, скопируйте его HTTPS URL `https://...workers.dev`. Сам Worker обрабатывает CORS и не даёт клиенту менять GAS endpoint.
+5. На iPhone в Safari откройте статическую PWA `https://issataevun-sys.github.io/tobacco-inventory/` (доступна только после успешного GitHub Pages deployment). Введите URL Worker и имеющийся код активации. Потом «Поделиться» → «На экран Домой».
 
-## GitHub Pages
+## Публикация
+Статическая PWA копируется в отдельный **публичный** репозиторий `issataevun-sys/tobacco-inventory`. Там должны быть только `index.html`, `app.js`, `sw.js`, `icon.svg`, `manifest.webmanifest` и GitHub Pages workflow. **Код GAS, таблицы и секреты не публиковать.**
 
-Workflow: `.github/workflows/pages.yml`, branch `main`, repository root.
-To deploy, the owner must enable GitHub Pages **GitHub Actions** under repository Settings → Pages and ensure the repository's plan/visibility supports Pages. If the private repository cannot host Pages, publish **only this static PWA directory** to a separate public repo; never publish the GAS backend or secrets.
+В публичном репозитории Settings → Pages → Source: GitHub Actions. Дождитесь успешного Actions → Pages, иначе URL не работает.
 
-Do not assume a functioning public URL until a Pages deployment succeeds. The usual project URL would be `https://issataevun-sys.github.io/tobacco-inventory/` **only if Pages is enabled and deployment completes**.
-
-## Test steps
-
-1. Open the deployed HTTPS URL in Safari on the iPhone; Share → Add to Home Screen.
-2. Launch the installed app; allow the camera. Try a real EAN-13 and a GS1 Data Matrix. The Data Matrix should resolve a 14-digit GTIN.
-3. Enter a flavor and net/gross measured weight as test data; save. Reload, go offline, confirm previously saved entries remain available.
-4. Export JSON before clearing Safari or deleting the PWA; device-local data is otherwise lost.
-
-## NOT IMPLEMENTED / safety boundary
-
-- No server synchronization or catalog lookup: records are **not** reflected in STAFF/MANAGEMENT inventories.
-- Full reusable local inventory UX (Service/Склад, stock packs, coal, mouthpieces) from the existing GAS app is not yet integrated into this static client.
-- Camera and Code 128 / Data Matrix scanning must be confirmed on an actual iPhone (not proven by source checks).
-- Offline decoder after first load depends on successful caching; camera still depends on iOS permissions.
-- Current generated SVG is a vector approximation of the approved yellow/black artwork; iPhone raster Apple Touch Icon is still needed for final-quality installation.
-- Never use test scanner entries as authoritative inventory.
+## Примечания и ограничения
+- Развертывание в GAS, Cloudflare, GitHub Pages и e2e-тест на реальном iPhone требуют проверки и не выполняются самим коммитом.
+- Если соответствующий GTIN отсутствует в `TobaccoBarcodes` или вкус отсутствует в активной инвентаризации, приложение не придумывает вкус.
+- При конфликте серверной ревизии данные остаются в локальной очереди и требуют сверки, а не принудительного перезаписывания.
+- Первый запуск и первая загрузка библиотеки сканера требуют интернет; перед реальной работой проверьте офлайн-загрузку и актуальность кеша на iPhone.
+- Текущая восьмисимвольная схема активации предназначена только для ограниченного теста, не для публичного продуктового доступа.
