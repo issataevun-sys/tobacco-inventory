@@ -2,8 +2,7 @@
 (function(){
 'use strict';
 var state={secret:'',bridgeUrl:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
-var status=document.getElementById('status');
-function setStatus(s){status.textContent=s;status.dataset.state=state.conflict?'conflict':!navigator.onLine?'offline':syncing||state.queue.length?'syncing':'online'}
+function setStatus(s){var status=document.getElementById('status');if(!status)return;status.textContent=s;status.dataset.state=state.conflict?'conflict':!navigator.onLine?'offline':syncing||state.queue.length?'syncing':'online'}
 function openDb(){return new Promise(function(resolve,reject){
  var r=indexedDB.open('cr-temp-tobacco-v1',1);
  r.onupgradeneeded=function(){r.result.createObjectStore('kv')};
@@ -147,12 +146,12 @@ async function start(){
    document.getElementById('activate').onclick=async function(){
     var key=document.getElementById('key').value.trim();
      var bridge=document.getElementById('bridgeUrl').value.trim().replace(/\/+$/,'');
-     if(!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(bridge)){document.getElementById('setupError').textContent='Укажите правильный HTTPS-адрес';return}
+     if(!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(bridge)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Укажите правильный HTTPS-адрес';return}
      state.bridgeUrl=bridge;
-    if(!/^[A-Za-z0-9]{8}$/.test(key)){document.getElementById('setupError').textContent='Введите 8 латинских букв и цифр';return}
+    if(!/^[A-Za-z0-9]{8}$/.test(key)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Введите 8 латинских букв и цифр';return}
     state.secret=key;
     try{state.snapshot=await rpc('crStaffTobaccoActive',{});await persist();launch()}
-    catch(e){state.secret='';document.getElementById('setupError').textContent=e.message}
+    catch(e){state.secret='';(document.getElementById('setupError')||document.getElementById('status')).textContent=e.message}
    };
    return;
   }
@@ -176,5 +175,5 @@ window.addEventListener('online',function(){showStatus();flush()});
 window.addEventListener('offline',showStatus);
 document.addEventListener('visibilitychange',function(){if(!document.hidden)flush()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(function(){});
-start();
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
