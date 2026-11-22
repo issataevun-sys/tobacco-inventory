@@ -22,7 +22,7 @@ async function rpc(method,payload){
  if(!navigator.onLine)throw Error('Нет интернета');
  if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1,crStaffTobaccoBarcodeSave:1}[method])throw Error('Недоступная операция');
  if(!state.bridgeUrl||!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(state.bridgeUrl))throw Error('Не указан адрес сервера синхронизации');
- const controller=new AbortController(),timer=setTimeout(function(){controller.abort()},25000);
+ const controller=new AbortController(),timer=setTimeout(function(){controller.abort()},65000);
  try{
   const response=await fetch(state.bridgeUrl,{method:'POST',mode:'cors',
    headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -32,7 +32,7 @@ async function rpc(method,payload){
   if(!response.ok)throw Error(String(result&&result.error||'Сервер синхронизации: HTTP '+response.status));
   if(!result||result.ok!==true)throw Error(String(result&&result.error||'Ошибка сервера'));
   return result.result;
- }catch(e){throw Error(e&&e.name==='AbortError'?'Превышено время ответа сервера':String(e&&e.message||e))}
+ }catch(e){throw Error(e&&e.name==='AbortError'?(method==='crStaffTobaccoBarcodeSave'?'Ответ сервера не получен. Проверьте штрихкод в списке перед повторным сохранением':'Превышено время ответа сервера'):String(e&&e.message||e))}
  finally{clearTimeout(timer)}
 }
 function clone(obj){return JSON.parse(JSON.stringify(obj))}
