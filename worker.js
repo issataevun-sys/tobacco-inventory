@@ -36,7 +36,7 @@ export default {
   try{
    const response=await fetch(url,{
     method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:raw,redirect:'follow',signal:AbortSignal.timeout(20000)
+    body:raw,redirect:'follow',signal:AbortSignal.timeout(55000)
    });
    if(!response.ok)return result(502,{ok:false,error:'Google Apps Script: HTTP '+response.status});
    let answer;
@@ -44,7 +44,7 @@ export default {
    if(!answer||typeof answer.ok!=='boolean')return result(502,{ok:false,error:'Неправильный ответ GAS'});
    return result(200,answer);
   }catch(error){
-   return result(502,{ok:false,error:'Нет связи с Google Apps Script: '+String(error&&error.message||error)});
+   return result(502,{ok:false,error:'Не удалось подтвердить ответ Google Apps Script: '+String(error&&error.message||error)});
   }
  }
 };
