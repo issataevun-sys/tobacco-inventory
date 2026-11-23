@@ -181,7 +181,7 @@ function showPin(){
  inventorySession='';inventoryName='';
  if(ui){ui.clear();ui=null}
  document.getElementById('inventory').hidden=true;
- document.getElementById('logout').hidden=true;
+ document.getElementById('staffBar').hidden=true;
  document.getElementById('pinScreen').hidden=false;
  document.getElementById('setup').hidden=true;
  document.getElementById('pin').value='';
@@ -273,7 +273,8 @@ function launch(){
  document.getElementById('pinScreen').hidden=true;
  document.body.classList.remove('inventoryLogin');
  document.getElementById('inventory').hidden=false;
- document.getElementById('logout').hidden=false;
+ document.getElementById('staffName').textContent=inventoryName||'Сотрудник';
+ document.getElementById('staffBar').hidden=false;
  if(ui)ui.clear();
  ui=window.crStaffTobaccoFactory(api);
  ui.mount(document.getElementById('inventory'));
