@@ -1,5 +1,5 @@
 /* v1.2.0: standalone inventory shell and cached ZXing decoder. */
-const SHELL_CACHE='cr-inventory-pwa-v1.3.22';
+const SHELL_CACHE='cr-inventory-pwa-v1.3.23';
 const DECODER_CACHE='cr-inventory-zxing-v1';
 const SHELL=['./','./index.html','./app.js','./icon.png','./manifest.webmanifest'];
 const DECODERS=new Set([
