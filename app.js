@@ -274,6 +274,7 @@ function launch(){
  document.body.classList.remove('inventoryLogin');
  document.getElementById('inventory').hidden=false;
  document.getElementById('staffName').textContent=inventoryName||'Сотрудник';
+ document.getElementById('staffAvatar').textContent=(inventoryName||'С').trim().charAt(0).toLocaleUpperCase('ru-RU');
  document.getElementById('staffBar').hidden=false;
  if(ui)ui.clear();
  ui=window.crStaffTobaccoFactory(api);
