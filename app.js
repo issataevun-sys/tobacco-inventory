@@ -106,6 +106,7 @@ async function flush(){
  }finally{syncing=false;showStatus()}
 }
 var api={
+ onBarcodeClose:function(){exitBarcodePage()},
  isActive:function(){return active},
  call:function(method,payload,success,failure){
   (async function(){
@@ -183,6 +184,8 @@ function showPin(){
  document.getElementById('inventory').hidden=true;
  document.getElementById('staffBar').hidden=true;
  document.getElementById('barcodeCard').hidden=true;
+ document.getElementById('barcodePage').hidden=true;
+ document.getElementById('status').hidden=false;
  document.getElementById('pinScreen').hidden=false;
  document.getElementById('setup').hidden=true;
  document.getElementById('pin').value='';
@@ -278,13 +281,30 @@ function launch(){
  document.getElementById('staffAvatar').textContent=(inventoryName||'С').trim().charAt(0).toLocaleUpperCase('ru-RU');
  document.getElementById('staffBar').hidden=false;
  document.getElementById('barcodeCard').hidden=false;
+ document.getElementById('barcodePage').hidden=true;
+ document.getElementById('status').hidden=false;
  if(ui)ui.clear();
  ui=window.crStaffTobaccoFactory(api);
  ui.mount(document.getElementById('inventory'));
  showStatus();flush();
 }
+function exitBarcodePage(){
+ if(ui)ui.closeBarcode();
+ document.getElementById('barcodePage').hidden=true;
+ document.getElementById('staffBar').hidden=false;
+ document.getElementById('barcodeCard').hidden=false;
+ document.getElementById('inventory').hidden=false;
+ document.getElementById('status').hidden=false;
+}
+document.getElementById('barcodeBack').onclick=exitBarcodePage;
 document.getElementById('barcodeTrigger').onclick=function(){
- if(ui&&inventorySession)ui.openBarcode();
+ if(!ui||!inventorySession)return;
+ document.getElementById('staffBar').hidden=true;
+ document.getElementById('barcodeCard').hidden=true;
+ document.getElementById('inventory').hidden=true;
+ document.getElementById('status').hidden=true;
+ document.getElementById('barcodePage').hidden=false;
+ ui.openBarcode();
 };
 document.getElementById('retry').onclick=function(){
  if(state.conflict){setStatus('Конфликт: данные сохранены локально');return}
