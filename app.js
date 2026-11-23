@@ -1,6 +1,7 @@
 
 (function(){
 'use strict';
+var inventorySession='',inventoryName='';
 var state={secret:'',bridgeUrl:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
 function setStatus(s){var status=document.getElementById('status');if(!status)return;status.textContent=s;status.dataset.state=state.conflict?'conflict':!navigator.onLine?'offline':syncing||state.queue.length?'syncing':'online'}
 function openDb(){return new Promise(function(resolve,reject){
@@ -20,13 +21,13 @@ function persist(){return new Promise(function(resolve,reject){
 
 async function rpc(method,payload){
  if(!navigator.onLine)throw Error('Нет интернета');
- if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1,crStaffTobaccoBarcodeSave:1}[method])throw Error('Недоступная операция');
+ if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1,crStaffTobaccoBarcodeSave:1,crInventoryPinLogin:1,crInventoryPinLogout:1}[method])throw Error('Недоступная операция');
  if(!state.bridgeUrl||!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(state.bridgeUrl))throw Error('Не указан адрес сервера синхронизации');
  const controller=new AbortController(),timer=setTimeout(function(){controller.abort()},65000);
  try{
   const response=await fetch(state.bridgeUrl,{method:'POST',mode:'cors',
    headers:{'Content-Type':'text/plain;charset=utf-8'},
-   body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret})}),
+   body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret,inventorySession:inventorySession})}),
    cache:'no-store',signal:controller.signal});
   const result=await response.json().catch(function(){return null});
   if(!response.ok)throw Error(String(result&&result.error||'Сервер синхронизации: HTTP '+response.status));
@@ -74,7 +75,7 @@ function showStatus(){
  setStatus(navigator.onLine?'Синхронизировано':'Офлайн · сохранено на iPhone');
 }
 async function flush(){
- if(syncing||!state.secret||!navigator.onLine||!state.queue.length||state.conflict)return;
+ if(syncing||!inventorySession||!state.secret||!navigator.onLine||!state.queue.length||state.conflict)return;
  syncing=true;
  try{
   var remote=await rpc('crStaffTobaccoActive',{});
@@ -110,6 +111,7 @@ var api={
   (async function(){
    try{
     if(!state.secret)throw Error('Устройство не активировано');
+    if(!inventorySession)throw Error('Требуется вход по PIN');
     if(method==='crStaffTobaccoActive'){
      if(!state.queue.length&&navigator.onLine){
       try{state.snapshot=await rpc(method,{});await persist()}
@@ -167,17 +169,53 @@ async function start(){
      state.bridgeUrl=bridge;
     if(!/^[A-Za-z0-9]{8}$/.test(key)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Введите 8 латинских букв и цифр';return}
     state.secret=key;
-    try{state.snapshot=await rpc('crStaffTobaccoActive',{});await persist();launch()}
+    try{state.snapshot=await rpc('crStaffTobaccoActive',{}).catch(function(e){if(/PIN|вход|сессия/i.test(e.message))return state.snapshot;throw e});await persist();showPin()}
     catch(e){state.secret='';(document.getElementById('setupError')||document.getElementById('status')).textContent=e.message}
    };
    return;
   }
-  launch();
+  showPin();
  }catch(e){setStatus('Локальное хранилище недоступно: '+e.message)}
 }
+function showPin(){
+ inventorySession='';inventoryName='';
+ if(ui){ui.clear();ui=null}
+ document.getElementById('inventory').hidden=true;
+ document.getElementById('pinScreen').hidden=false;
+ document.getElementById('setup').hidden=true;
+ document.getElementById('pin').value='';
+ document.getElementById('pinError').textContent='';
+ setStatus('Вход сотрудника');
+}
+document.getElementById('pinForm').onsubmit=async function(event){
+ event.preventDefault();
+ var pin=document.getElementById('pin').value;
+ if(!/^[0-9]{6}$/.test(pin)){document.getElementById('pinError').textContent='Введите 6 цифр';return}
+ var btn=document.getElementById('pinSubmit');btn.disabled=true;
+ try{
+  var user=await rpc('crInventoryPinLogin',{pin:pin});
+  inventorySession=user.token;inventoryName=user.name||'';
+  document.getElementById('pin').value='';
+  launch();
+ }catch(e){document.getElementById('pinError').textContent=e.message}
+ finally{btn.disabled=false}
+};
+document.getElementById('logout').onclick=async function(){
+ var previous=inventorySession;
+ inventorySession='';
+ showPin();
+ if(previous&&navigator.onLine){
+  inventorySession=previous;
+  try{await rpc('crInventoryPinLogout',{})}catch(e){}
+  inventorySession='';
+ }
+};
 function launch(){
  document.getElementById('setup').hidden=true;
+ document.getElementById('pinScreen').hidden=true;
  document.getElementById('inventory').hidden=false;
+ document.getElementById('logout').hidden=false;
+ if(ui)ui.clear();
  ui=window.crStaffTobaccoFactory(api);
  ui.mount(document.getElementById('inventory'));
  showStatus();flush();
@@ -186,7 +224,7 @@ document.getElementById('retry').onclick=function(){
  if(state.conflict){setStatus('Конфликт: данные сохранены локально');return}
  if(ui && state.snapshot && state.snapshot.active && !window.confirm('Обновить данные? Несохранённые значения в полях будут потеряны.'))return;
  if(state.queue.length){flush();return}
- if(ui)ui.refresh();else flush();
+ if(ui)ui.refresh();else if(inventorySession)flush();
 };
 window.addEventListener('online',function(){showStatus();flush()});
 window.addEventListener('offline',showStatus);
