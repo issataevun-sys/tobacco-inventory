@@ -1,7 +1,7 @@
 
 (function(){
 'use strict';
-var inventorySession='',inventoryName='';
+var inventorySession='',inventoryName='',canManageBarcodes=false;
 var state={secret:'',bridgeUrl:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
 function setStatus(s){var status=document.getElementById('status');if(!status)return;status.textContent=s;status.dataset.state=state.conflict?'conflict':!navigator.onLine?'offline':syncing||state.queue.length?'syncing':'online'}
 function openDb(){return new Promise(function(resolve,reject){
@@ -113,6 +113,7 @@ var api={
    try{
     if(!state.secret)throw Error('Устройство не активировано');
     if(!inventorySession)throw Error('Требуется вход по PIN');
+    if(method==='crStaffTobaccoBarcodeSave'&&!canManageBarcodes)throw Error('Добавлять штрихкоды может только владелец');
     if(method==='crStaffTobaccoActive'){
      if(!state.queue.length&&navigator.onLine){
       try{state.snapshot=await rpc(method,{});await persist()}
@@ -179,7 +180,7 @@ async function start(){
  }catch(e){setStatus('Локальное хранилище недоступно: '+e.message)}
 }
 function showPin(){
- inventorySession='';inventoryName='';
+ inventorySession='';inventoryName='';canManageBarcodes=false;
  if(ui){ui.clear();ui=null}
  document.getElementById('inventory').hidden=true;
  document.getElementById('staffBar').hidden=true;
@@ -250,6 +251,7 @@ document.getElementById('pinForm').onsubmit=async function(event){
  try{
   var user=await rpc('crInventoryPinLogin',{pin:pin});
   inventorySession=user.token;inventoryName=user.name||'';
+  canManageBarcodes=user.role==='owner'&&user.canManageBarcodes===true;
   pinPhase='success';pinOffsets();
   pinEntry().classList.remove('is-verifying');pinEntry().classList.add('is-success');
   pinTimer=setTimeout(function(){pinReset();field.value='';pinUpdate();launch()},380);
@@ -280,7 +282,7 @@ function launch(){
  document.getElementById('staffName').textContent=inventoryName||'Сотрудник';
  document.getElementById('staffAvatar').textContent=(inventoryName||'С').trim().charAt(0).toLocaleUpperCase('ru-RU');
  document.getElementById('staffBar').hidden=false;
- document.getElementById('barcodeCard').hidden=false;
+ document.getElementById('barcodeCard').hidden=!canManageBarcodes;
  document.getElementById('barcodePage').hidden=true;
  document.getElementById('status').hidden=false;
  if(ui)ui.clear();
@@ -292,13 +294,13 @@ function exitBarcodePage(){
  if(ui)ui.closeBarcode();
  document.getElementById('barcodePage').hidden=true;
  document.getElementById('staffBar').hidden=false;
- document.getElementById('barcodeCard').hidden=false;
+ document.getElementById('barcodeCard').hidden=!canManageBarcodes;
  document.getElementById('inventory').hidden=false;
  document.getElementById('status').hidden=false;
 }
 document.getElementById('barcodeBack').onclick=exitBarcodePage;
 document.getElementById('barcodeTrigger').onclick=function(){
- if(!ui||!inventorySession)return;
+ if(!ui||!inventorySession||!canManageBarcodes)return;
  document.getElementById('staffBar').hidden=true;
  document.getElementById('barcodeCard').hidden=true;
  document.getElementById('inventory').hidden=true;
