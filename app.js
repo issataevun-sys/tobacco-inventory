@@ -2,7 +2,17 @@
 (function(){
 'use strict';
 var inventorySession='',inventoryName='',canManageBarcodes=false;
-var state={secret:'',bridgeUrl:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
+var state={secret:'',bridgeUrl:'',inventoryDeviceId:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
+function inventoryCreateDeviceId(){
+ if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();
+ if(window.crypto&&crypto.getRandomValues){
+  var bytes=new Uint8Array(16);crypto.getRandomValues(bytes);
+  bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  var hex=Array.from(bytes).map(function(x){return x.toString(16).padStart(2,'0')}).join('');
+  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+ }
+ throw Error('Устройство не поддерживает безопасную генерацию идентификатора');
+}
 function setStatus(s){var status=document.getElementById('status');if(!status)return;status.textContent=s;status.dataset.state=state.conflict?'conflict':!navigator.onLine?'offline':syncing||state.queue.length?'syncing':'online'}
 function openDb(){return new Promise(function(resolve,reject){
  var r=indexedDB.open('cr-temp-tobacco-v1',1);
@@ -27,7 +37,7 @@ async function rpc(method,payload){
  try{
   const response=await fetch(state.bridgeUrl,{method:'POST',mode:'cors',
    headers:{'Content-Type':'text/plain;charset=utf-8'},
-   body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret,inventorySession:inventorySession})}),
+   body:JSON.stringify({method:method,payload:Object.assign({},payload||{},{deviceSecret:state.secret,inventorySession:inventorySession,inventoryDeviceId:state.inventoryDeviceId})}),
    cache:'no-store',signal:controller.signal});
   const result=await response.json().catch(function(){return null});
   if(!response.ok)throw Error(String(result&&result.error||'Сервер синхронизации: HTTP '+response.status));
@@ -167,6 +177,10 @@ var api={
 async function start(){
  try{
   db=await openDb();var saved=await getSaved();if(saved)state=Object.assign(state,saved);
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(state.inventoryDeviceId||'')){
+   state.inventoryDeviceId=inventoryCreateDeviceId();
+   await persist();
+  }
   if(!state.secret||!state.bridgeUrl){
    document.getElementById('setup').hidden=false;
     document.getElementById('bridgeUrl').value=state.bridgeUrl||'';
@@ -204,14 +218,14 @@ function showPin(){
  setStatus('Вход сотрудника');
 }
 var pinPhase='idle',pinTimer=null,pinLockTimer=null,pinLockUntil=0;
-var pinLockKey='cr-inventory-pin-lock-until';
+var pinLockKey=function(){return 'cr-inventory-pin-lock-until-'+state.inventoryDeviceId};
 function pinLockRender(){
  var remain=Math.max(0,pinLockUntil-Date.now());
  var card=document.getElementById('pinLock'),time=document.getElementById('pinLockTime');
  if(!remain){
   if(pinLockTimer){clearInterval(pinLockTimer);pinLockTimer=null}
   pinLockUntil=0;
-  try{localStorage.removeItem(pinLockKey)}catch(_){}
+  try{localStorage.removeItem(pinLockKey())}catch(_){}
   card.hidden=true;
   if(pinPhase==='locked'){
    pinPhase='idle';
@@ -238,7 +252,7 @@ function pinLockStart(retryAfterMs){
  var duration=Math.max(0,Number(retryAfterMs)||0);
  if(!duration)return;
  pinLockUntil=Date.now()+duration;
- try{localStorage.setItem(pinLockKey,String(pinLockUntil))}catch(_){}
+ try{localStorage.setItem(pinLockKey(),String(pinLockUntil))}catch(_){}
  if(pinTimer){clearTimeout(pinTimer);pinTimer=null}
  if(pinLockTimer)clearInterval(pinLockTimer);
  pinLockRender();
@@ -246,7 +260,7 @@ function pinLockStart(retryAfterMs){
 }
 function pinLockRestore(){
  var expiry=0;
- try{expiry=Number(localStorage.getItem(pinLockKey)||0)}catch(_){}
+ try{expiry=Number(localStorage.getItem(pinLockKey())||0)}catch(_){}
  if(expiry>Date.now())pinLockStart(expiry-Date.now());
  else pinLockRender();
 }
