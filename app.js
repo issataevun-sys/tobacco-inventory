@@ -181,6 +181,7 @@ function showPin(){
  inventorySession='';inventoryName='';
  if(ui){ui.clear();ui=null}
  document.getElementById('inventory').hidden=true;
+ document.getElementById('logout').hidden=true;
  document.getElementById('pinScreen').hidden=false;
  document.getElementById('setup').hidden=true;
  document.getElementById('pin').value='';
