@@ -182,6 +182,7 @@ function showPin(){
  if(ui){ui.clear();ui=null}
  document.getElementById('inventory').hidden=true;
  document.getElementById('staffBar').hidden=true;
+ document.getElementById('barcodeCard').hidden=true;
  document.getElementById('pinScreen').hidden=false;
  document.getElementById('setup').hidden=true;
  document.getElementById('pin').value='';
@@ -276,11 +277,15 @@ function launch(){
  document.getElementById('staffName').textContent=inventoryName||'Сотрудник';
  document.getElementById('staffAvatar').textContent=(inventoryName||'С').trim().charAt(0).toLocaleUpperCase('ru-RU');
  document.getElementById('staffBar').hidden=false;
+ document.getElementById('barcodeCard').hidden=false;
  if(ui)ui.clear();
  ui=window.crStaffTobaccoFactory(api);
  ui.mount(document.getElementById('inventory'));
  showStatus();flush();
 }
+document.getElementById('barcodeTrigger').onclick=function(){
+ if(ui&&inventorySession)ui.openBarcode();
+};
 document.getElementById('retry').onclick=function(){
  if(state.conflict){setStatus('Конфликт: данные сохранены локально');return}
  if(ui && state.snapshot && state.snapshot.active && !window.confirm('Обновить данные? Несохранённые значения в полях будут потеряны.'))return;
