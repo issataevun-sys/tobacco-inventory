@@ -31,9 +31,16 @@ async function rpc(method,payload){
    cache:'no-store',signal:controller.signal});
   const result=await response.json().catch(function(){return null});
   if(!response.ok)throw Error(String(result&&result.error||'Сервер синхронизации: HTTP '+response.status));
-  if(!result||result.ok!==true)throw Error(String(result&&result.error||'Ошибка сервера'));
+  if(!result||result.ok!==true){
+   var requestError=Error(String(result&&result.error||'Ошибка сервера'));
+   requestError.retryAfterMs=Math.max(0,Number(result&&result.retryAfterMs)||0);
+   throw requestError;
+  }
   return result.result;
- }catch(e){throw Error(e&&e.name==='AbortError'?(method==='crStaffTobaccoBarcodeSave'?'Ответ сервера не получен. Проверьте штрихкод в списке перед повторным сохранением':'Превышено время ответа сервера'):String(e&&e.message||e))}
+ }catch(e){
+  if(e&&e.retryAfterMs>0)throw e;
+  throw Error(e&&e.name==='AbortError'?(method==='crStaffTobaccoBarcodeSave'?'Ответ сервера не получен. Проверьте штрихкод в списке перед повторным сохранением':'Превышено время ответа сервера'):String(e&&e.message||e));
+ }
  finally{clearTimeout(timer)}
 }
 function clone(obj){return JSON.parse(JSON.stringify(obj))}
@@ -193,9 +200,56 @@ function showPin(){
  pinReset();
  document.body.classList.add('inventoryLogin');
  document.getElementById('pinError').textContent='';
+ pinLockRestore();
  setStatus('Вход сотрудника');
 }
-var pinPhase='idle',pinTimer=null;
+var pinPhase='idle',pinTimer=null,pinLockTimer=null,pinLockUntil=0;
+var pinLockKey='cr-inventory-pin-lock-until';
+function pinLockRender(){
+ var remain=Math.max(0,pinLockUntil-Date.now());
+ var card=document.getElementById('pinLock'),time=document.getElementById('pinLockTime');
+ if(!remain){
+  if(pinLockTimer){clearInterval(pinLockTimer);pinLockTimer=null}
+  pinLockUntil=0;
+  try{localStorage.removeItem(pinLockKey)}catch(_){}
+  card.hidden=true;
+  if(pinPhase==='locked'){
+   pinPhase='idle';
+   document.getElementById('pin').disabled=false;
+   document.getElementById('pinSubmit').disabled=false;
+   pinEntry().classList.remove('is-verifying','is-error');
+   document.getElementById('pinError').textContent='';
+   pinUpdate();
+  }
+  return;
+ }
+ pinPhase='locked';
+ document.getElementById('pin').disabled=true;
+ document.getElementById('pinSubmit').disabled=true;
+ document.getElementById('pin').value='';
+ pinEntry().classList.remove('is-verifying','is-error');
+ pinUpdate();
+ card.hidden=false;
+ var seconds=Math.ceil(remain/1000);
+ time.textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+ document.getElementById('pinLockProgress').style.width=(100*Math.min(1,remain/(15*60*1000)))+'%';
+}
+function pinLockStart(retryAfterMs){
+ var duration=Math.max(0,Number(retryAfterMs)||0);
+ if(!duration)return;
+ pinLockUntil=Date.now()+duration;
+ try{localStorage.setItem(pinLockKey,String(pinLockUntil))}catch(_){}
+ if(pinTimer){clearTimeout(pinTimer);pinTimer=null}
+ if(pinLockTimer)clearInterval(pinLockTimer);
+ pinLockRender();
+ pinLockTimer=setInterval(pinLockRender,250);
+}
+function pinLockRestore(){
+ var expiry=0;
+ try{expiry=Number(localStorage.getItem(pinLockKey)||0)}catch(_){}
+ if(expiry>Date.now())pinLockStart(expiry-Date.now());
+ else pinLockRender();
+}
 function pinEntry(){return document.querySelector('#pinScreen .pinEntry')}
 function pinUpdate(){
  var input=document.getElementById('pin'),digits=String(input.value||'').replace(/[^0-9]/g,'').slice(0,6);
@@ -243,7 +297,7 @@ document.getElementById('pin').addEventListener('blur',pinUpdate);
 document.querySelector('#pinScreen .pinCells').addEventListener('click',function(){if(pinPhase==='idle')document.getElementById('pin').focus()});
 document.getElementById('pinForm').onsubmit=async function(event){
  event.preventDefault();
- if(pinPhase!=='idle')return;
+ if(pinPhase!=='idle'||pinLockUntil>Date.now())return;
  var field=document.getElementById('pin'),pin=field.value;
  if(!/^[0-9]{6}$/.test(pin)){document.getElementById('pinError').textContent='Введите 6 цифр';return}
  pinPhase='verifying';pinEntry().classList.add('is-verifying');pinUpdate();
@@ -256,6 +310,12 @@ document.getElementById('pinForm').onsubmit=async function(event){
   pinEntry().classList.remove('is-verifying');pinEntry().classList.add('is-success');
   pinTimer=setTimeout(function(){pinReset();field.value='';pinUpdate();launch()},380);
  }catch(e){
+  if(e&&Number(e.retryAfterMs)>0){
+   pinReset();field.value='';pinUpdate();
+   document.getElementById('pinError').textContent='';
+   pinLockStart(e.retryAfterMs);
+   return;
+  }
   pinPhase='error';pinEntry().classList.remove('is-verifying');pinEntry().classList.add('is-error');
   pinTimer=setTimeout(function(){
    pinReset();field.value='';pinUpdate();
