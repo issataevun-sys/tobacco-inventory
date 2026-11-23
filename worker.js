@@ -5,7 +5,7 @@
  * Deploy at https://<worker>.<account>.workers.dev.
  */
 const ALLOWED_ORIGIN='https://issataevun-sys.github.io';
-const ALLOWED_METHODS=new Set(['crStaffTobaccoActive','crStaffTobaccoCreate','crStaffTobaccoSave','crStaffTobaccoBarcodeSave']);
+const ALLOWED_METHODS=new Set(['crStaffTobaccoActive','crStaffTobaccoCreate','crStaffTobaccoSave','crStaffTobaccoBarcodeSave','crInventoryPinLogin','crInventoryPinLogout']);
 const HEADERS={
  'Access-Control-Allow-Origin':ALLOWED_ORIGIN,
  'Access-Control-Allow-Methods':'POST, OPTIONS',
