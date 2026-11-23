@@ -185,21 +185,78 @@ function showPin(){
  document.getElementById('pinScreen').hidden=false;
  document.getElementById('setup').hidden=true;
  document.getElementById('pin').value='';
+ pinReset();
+ document.body.classList.add('inventoryLogin');
  document.getElementById('pinError').textContent='';
  setStatus('Вход сотрудника');
 }
+var pinPhase='idle',pinTimer=null;
+function pinEntry(){return document.querySelector('#pinScreen .pinEntry')}
+function pinUpdate(){
+ var input=document.getElementById('pin'),digits=String(input.value||'').replace(/[^0-9]/g,'').slice(0,6);
+ if(input.value!==digits)input.value=digits;
+ document.querySelectorAll('#pinScreen .pinCell').forEach(function(cell,i){
+  cell.classList.toggle('filled',i<digits.length);
+  cell.classList.toggle('current',i===digits.length&&pinPhase==='idle');
+ });
+}
+function pinReset(){
+ if(pinTimer){clearTimeout(pinTimer);pinTimer=null}
+ pinPhase='idle';
+ pinEntry().classList.remove('is-verifying','is-error','is-success');
+ document.getElementById('pin').disabled=false;
+ document.getElementById('pinSubmit').disabled=false;
+ pinUpdate();
+}
+function pinOffsets(){
+ var cells=Array.from(document.querySelectorAll('#pinScreen .pinCell'));
+ var rect=document.querySelector('#pinScreen .pinCells').getBoundingClientRect();
+ var center=rect.left+rect.width/2;
+ cells.forEach(function(cell){
+  var r=cell.getBoundingClientRect();
+  cell.style.setProperty('--pin-merge-x',(center-r.left-r.width/2)+'px');
+ });
+}
+var pinAutoSubmit=null;
+document.getElementById('pin').addEventListener('input',function(){
+ if(pinPhase!=='idle')return;
+ document.getElementById('pinError').textContent='';
+ pinUpdate();
+ if(pinAutoSubmit)clearTimeout(pinAutoSubmit);
+ if(this.value.length===6){
+  pinAutoSubmit=setTimeout(function(){
+   if(pinPhase==='idle'&&!document.getElementById('pinScreen').hidden){
+    var form=document.getElementById('pinForm');
+    if(form.requestSubmit)form.requestSubmit();
+    else form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+   }
+  },90);
+ }
+});
+document.getElementById('pin').addEventListener('focus',pinUpdate);
+document.getElementById('pin').addEventListener('blur',pinUpdate);
+document.querySelector('#pinScreen .pinCells').addEventListener('click',function(){if(pinPhase==='idle')document.getElementById('pin').focus()});
 document.getElementById('pinForm').onsubmit=async function(event){
  event.preventDefault();
- var pin=document.getElementById('pin').value;
+ if(pinPhase!=='idle')return;
+ var field=document.getElementById('pin'),pin=field.value;
  if(!/^[0-9]{6}$/.test(pin)){document.getElementById('pinError').textContent='Введите 6 цифр';return}
- var btn=document.getElementById('pinSubmit');btn.disabled=true;
+ pinPhase='verifying';pinEntry().classList.add('is-verifying');pinUpdate();
+ document.getElementById('pinSubmit').disabled=true;field.disabled=true;
  try{
   var user=await rpc('crInventoryPinLogin',{pin:pin});
   inventorySession=user.token;inventoryName=user.name||'';
-  document.getElementById('pin').value='';
-  launch();
- }catch(e){document.getElementById('pinError').textContent=e.message}
- finally{btn.disabled=false}
+  pinPhase='success';pinOffsets();
+  pinEntry().classList.remove('is-verifying');pinEntry().classList.add('is-success');
+  pinTimer=setTimeout(function(){pinReset();field.value='';pinUpdate();launch()},380);
+ }catch(e){
+  pinPhase='error';pinEntry().classList.remove('is-verifying');pinEntry().classList.add('is-error');
+  pinTimer=setTimeout(function(){
+   pinReset();field.value='';pinUpdate();
+   document.getElementById('pinError').textContent=String(e&&e.message||e);
+   field.focus();
+  },600);
+ }
 };
 document.getElementById('logout').onclick=async function(){
  var previous=inventorySession;
@@ -214,6 +271,7 @@ document.getElementById('logout').onclick=async function(){
 function launch(){
  document.getElementById('setup').hidden=true;
  document.getElementById('pinScreen').hidden=true;
+ document.body.classList.remove('inventoryLogin');
  document.getElementById('inventory').hidden=false;
  document.getElementById('logout').hidden=false;
  if(ui)ui.clear();
