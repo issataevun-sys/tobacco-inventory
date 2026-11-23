@@ -305,7 +305,7 @@ window.crStaffTobaccoFactory=function(api){
  function label(i){return (i.brand?brandLabel(i.brand)+' · ':'')+i.name}
  function q(s){
   var inside=root&&root.querySelector(s);
-  return inside||(/^(?:\\[data-scan-|#tb-inline-reader)/.test(s)?document.querySelector(s):null);
+  return inside||((s.startsWith('[data-scan-')||s.startsWith('#tb-inline-reader'))?document.querySelector(s):null);
  }
  function message(text){var el=q('.tbError');if(el)el.textContent=text}
  function capture(){
