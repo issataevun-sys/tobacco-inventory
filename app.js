@@ -192,7 +192,7 @@ async function start(){
      state.bridgeUrl=bridge;
     if(!/^[A-Za-z0-9]{8}$/.test(key)){(document.getElementById('setupError')||document.getElementById('status')).textContent='Введите 8 латинских букв и цифр';return}
     state.secret=key;
-    try{state.snapshot=await rpc('crStaffTobaccoActive',{}).catch(function(e){if(/PIN|вход|сессия/i.test(e.message))return state.snapshot;throw e});await persist();showPin()}
+    try{await persist();showPin()}
     catch(e){state.secret='';(document.getElementById('setupError')||document.getElementById('status')).textContent=e.message}
    };
    return;
@@ -318,6 +318,7 @@ document.getElementById('pinForm').onsubmit=async function(event){
  document.getElementById('pinSubmit').disabled=true;field.disabled=true;
  try{
   var user=await rpc('crInventoryPinLogin',{pin:pin});
+  if(!user||!user.token)throw Error('Сервер не вернул PIN-сессию');
   inventorySession=user.token;inventoryName=user.name||'';
   canManageBarcodes=user.role==='owner'&&user.canManageBarcodes===true;
   pinPhase='success';pinOffsets();
