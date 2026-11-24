@@ -1,6 +1,7 @@
 
 (function(){
 'use strict';
+var APP_VERSION='1.3.26',pendingWrites=0,pendingCalls=0,pendingRpc=0,updateApplying=false,updateRegistration=null,updateCandidate=null,updateDeferred=null,updateCheckedAt=0,storageReady=false;
 var inventorySession='',inventoryName='',canManageBarcodes=false;
 var state={secret:'',bridgeUrl:'',inventoryDeviceId:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
 function inventoryCreateDeviceId(){
@@ -23,17 +24,18 @@ function getSaved(){return new Promise(function(resolve,reject){
  var tx=db.transaction('kv','readonly'),r=tx.objectStore('kv').get(storeKey);
  r.onsuccess=function(){resolve(r.result||null)};r.onerror=function(){reject(r.error)};
 })}
-function persist(){return new Promise(function(resolve,reject){
+function persist(){pendingWrites++;return new Promise(function(resolve,reject){
  var tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(state,storeKey);
- tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)};
-})}
+ tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)};tx.onabort=function(){reject(tx.error||Error('Хранилище: операция прервана'))};
+}).finally(function(){pendingWrites--;})}
 
 
 async function rpc(method,payload){
+ if(updateApplying)throw Error('Приложение обновляется');
  if(!navigator.onLine)throw Error('Нет интернета');
  if(!{crStaffTobaccoActive:1,crStaffTobaccoCreate:1,crStaffTobaccoSave:1,crStaffTobaccoBarcodeSave:1,crInventoryPinLogin:1,crInventoryPinLogout:1}[method])throw Error('Недоступная операция');
  if(!state.bridgeUrl||!/^https:\/\/[a-z0-9.-]+(?:\/[^?#]*)?$/i.test(state.bridgeUrl))throw Error('Не указан адрес сервера синхронизации');
- const controller=new AbortController(),timer=setTimeout(function(){controller.abort()},65000);
+ const controller=new AbortController(),timer=setTimeout(function(){controller.abort()},65000);pendingRpc++;
  try{
   const response=await fetch(state.bridgeUrl,{method:'POST',mode:'cors',
    headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -51,7 +53,7 @@ async function rpc(method,payload){
   if(e&&e.retryAfterMs>0)throw e;
   throw Error(e&&e.name==='AbortError'?(method==='crStaffTobaccoBarcodeSave'?'Ответ сервера не получен. Проверьте штрихкод в списке перед повторным сохранением':'Превышено время ответа сервера'):String(e&&e.message||e));
  }
- finally{clearTimeout(timer)}
+ finally{clearTimeout(timer);pendingRpc--;}
 }
 function clone(obj){return JSON.parse(JSON.stringify(obj))}
 function value(v){return v===null||v===undefined||v===''?null:Number(v)}
@@ -92,7 +94,7 @@ function showStatus(){
  setStatus(navigator.onLine?'Синхронизировано':'Офлайн · сохранено на iPhone');
 }
 async function flush(){
- if(syncing||!inventorySession||!state.secret||!navigator.onLine||!state.queue.length||state.conflict)return;
+ if(updateApplying||syncing||!inventorySession||!state.secret||!navigator.onLine||!state.queue.length||state.conflict)return;
  syncing=true;
  try{
   var remote=await rpc('crStaffTobaccoActive',{});
@@ -126,6 +128,7 @@ var api={
  onBarcodeClose:function(){exitBarcodePage()},
  isActive:function(){return active},
  call:function(method,payload,success,failure){
+  if(updateApplying){failure('Приложение обновляется');return;}pendingCalls++;
   (async function(){
    try{
     if(!state.secret)throw Error('Устройство не активировано');
@@ -170,13 +173,13 @@ var api={
     }else throw Error('Недоступная операция');
     await persist();success({ok:true,queued:state.queue.length>0});
     showStatus();flush();
-   }catch(e){failure(e&&e.message||String(e))}
+   }catch(e){failure(e&&e.message||String(e))}finally{pendingCalls--;}
   })();
  }
 };
 async function start(){
  try{
-  db=await openDb();var saved=await getSaved();if(saved)state=Object.assign(state,saved);
+  db=await openDb();var saved=await getSaved();if(saved)state=Object.assign(state,saved);storageReady=true;
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(state.inventoryDeviceId||'')){
    state.inventoryDeviceId=inventoryCreateDeviceId();
    await persist();
@@ -392,6 +395,66 @@ document.getElementById('retry').onclick=function(){
 window.addEventListener('online',function(){showStatus();flush()});
 window.addEventListener('offline',showStatus);
 document.addEventListener('visibilitychange',function(){if(!document.hidden)flush()});
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(function(){});
+
+function updateBlocked(){
+ if(!storageReady||pendingWrites||pendingCalls||pendingRpc||syncing)return 'Дождитесь завершения сохранения и синхронизации.';
+ if(state.queue.length)return 'Сначала отправьте '+state.queue.length+' несинхронизированных операций.';
+ if(pinPhase==='verifying'||pinPhase==='success')return 'Дождитесь завершения входа.';
+ if(ui&&(!ui.canUpdate||!ui.canUpdate()))return 'Сохраните изменения и вернитесь к списку инвентаризаций. Закройте сканер и открытые окна.';
+ if(!document.getElementById('barcodePage').hidden)return 'Закройте сканер штрихкода.';
+ return '';
+}
+function updateNotice(message){document.getElementById('updateMessage').textContent=message||'';}
+function updateShow(worker){
+ if(!worker||!navigator.serviceWorker.controller||worker===updateDeferred)return;
+ updateCandidate=worker;var panel=document.getElementById('updatePanel');panel.hidden=false;
+ document.getElementById('updateVersion').textContent='Доступна новая версия';
+ updateNotice('Обновление заменит только файлы приложения.');
+ try{var channel=new MessageChannel();channel.port1.onmessage=function(e){if(updateCandidate===worker&&e.data&&/^\d+\.\d+\.\d+$/.test(e.data.version))document.getElementById('updateVersion').textContent='Доступна версия '+e.data.version;channel.port1.close();};worker.postMessage({type:'GET_VERSION'},[channel.port2]);}catch(e){}
+}
+async function checkUpdate(manual){
+ if(!updateRegistration){if(manual)updateNotice('Механизм обновлений ещё не готов.');return;}
+ if(!navigator.onLine){if(manual)updateNotice('Для проверки обновлений нужен интернет.');return;}
+ if(!manual&&Date.now()-updateCheckedAt<60000)return;
+ updateCheckedAt=Date.now();
+ if(manual){updateDeferred=null;document.getElementById('updatePanel').hidden=false;updateNotice('Проверяем обновления…');}
+ try{
+  await updateRegistration.update();
+  if(updateRegistration.waiting)updateShow(updateRegistration.waiting);
+  else if(manual)updateNotice(updateRegistration.installing?'Новая версия загружается…':'Установлена актуальная версия '+APP_VERSION+'.');
+ }catch(e){if(manual)updateNotice('Не удалось проверить обновления. Повторите позже.');}
+}
+document.getElementById('updateLater').onclick=function(){updateDeferred=updateCandidate;document.getElementById('updatePanel').hidden=true;};
+document.getElementById('updateCheck').onclick=function(){checkUpdate(true);};
+document.getElementById('updateApply').onclick=async function(){
+ if(updateApplying)return;
+ var worker=updateRegistration&&updateRegistration.waiting;
+ if(!worker){updateNotice('Обновление ещё не загружено.');return;}
+ var reason=updateBlocked();if(reason){updateNotice(reason);return;}
+ updateApplying=true;
+ var main=document.querySelector('main');main.setAttribute('inert','');main.style.pointerEvents='none';
+ if(document.activeElement)document.activeElement.blur();
+ try{
+  await persist();
+  if(worker!==updateRegistration.waiting)throw Error('Версия обновления изменилась. Повторите проверку.');
+  updateNotice('Устанавливаем обновление…');
+  worker.postMessage({type:'ACTIVATE_UPDATE'});
+  setTimeout(function(){if(updateApplying){updateApplying=false;main.removeAttribute('inert');main.style.pointerEvents='';updateNotice('Обновление не подтверждено. Повторите проверку.');}},15000);
+ }catch(e){updateApplying=false;main.removeAttribute('inert');main.style.pointerEvents='';updateNotice('Не удалось обновить приложение: '+e.message);}
+};
+if('serviceWorker' in navigator){
+ navigator.serviceWorker.addEventListener('controllerchange',function(){if(updateApplying)location.reload();});
+ navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(function(reg){
+  updateRegistration=reg;
+  function watch(worker){if(!worker)return;worker.addEventListener('statechange',function(){if(worker.state==='installed'&&reg.waiting)updateShow(reg.waiting);});}
+  reg.addEventListener('updatefound',function(){watch(reg.installing);});
+  watch(reg.installing);if(reg.waiting)updateShow(reg.waiting);
+  checkUpdate(false);
+ }).catch(function(){});
+ window.addEventListener('online',function(){checkUpdate(false);});
+ document.addEventListener('visibilitychange',function(){if(!document.hidden)checkUpdate(false);});
+ setInterval(function(){if(!document.hidden)checkUpdate(false);},15*60*1000);
+}
+
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
