@@ -1,7 +1,7 @@
 
 (function(){
 'use strict';
-var APP_VERSION='1.3.26',pendingWrites=0,pendingCalls=0,pendingRpc=0,updateApplying=false,updateRegistration=null,updateCandidate=null,updateDeferred=null,updateCheckedAt=0,storageReady=false;
+var APP_VERSION='1.3.27',pendingWrites=0,pendingCalls=0,pendingRpc=0,updateApplying=false,updateRegistration=null,updateCandidate=null,updateDeferred=null,updateCheckedAt=0,storageReady=false;
 var inventorySession='',inventoryName='',canManageBarcodes=false;
 var state={secret:'',bridgeUrl:'',inventoryDeviceId:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
 function inventoryCreateDeviceId(){
@@ -404,32 +404,53 @@ function updateBlocked(){
  if(!document.getElementById('barcodePage').hidden)return 'Закройте сканер штрихкода.';
  return '';
 }
-function updateNotice(message){document.getElementById('updateMessage').textContent=message||'';}
-function updateShow(worker){
- if(!worker||!navigator.serviceWorker.controller||worker===updateDeferred)return;
- updateCandidate=worker;var panel=document.getElementById('updatePanel');panel.hidden=false;
- document.getElementById('updateVersion').textContent='Доступна новая версия';
- updateNotice('Обновление заменит только файлы приложения.');
- try{var channel=new MessageChannel();channel.port1.onmessage=function(e){if(updateCandidate===worker&&e.data&&/^\d+\.\d+\.\d+$/.test(e.data.version))document.getElementById('updateVersion').textContent='Доступна версия '+e.data.version;channel.port1.close();};worker.postMessage({type:'GET_VERSION'},[channel.port2]);}catch(e){}
+function updateNotice(message){var el=document.getElementById('updateMessage');el.textContent=message||'';el.hidden=!message;}
+function versionNewer(v,current){if(!/^\d+\.\d+\.\d+$/.test(v||''))return false;var x=v.split('.').map(Number),y=current.split('.').map(Number);for(var i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i];}return false;}
+var updateVersion='',updateProbe=0,updateManual=false;
+function updateHide(){document.getElementById('updatePanel').hidden=true;}
+function updateInfo(message){
+ document.getElementById('updateVersion').textContent='Обновление приложения';
+ document.getElementById('updateDetail').textContent='';
+ document.getElementById('updateApply').hidden=true;
+ updateNotice(message);document.getElementById('updatePanel').hidden=false;
+}
+function updateShow(worker,manual){
+ if(!worker||!navigator.serviceWorker.controller||(!manual&&worker===updateDeferred))return;
+ var probe=++updateProbe;
+ try{
+  var channel=new MessageChannel(),timer=setTimeout(function(){channel.port1.close();if(probe===updateProbe&&manual)updateInfo('Не удалось проверить версию.');},4000);
+  channel.port1.onmessage=function(e){
+   clearTimeout(timer);channel.port1.close();
+   if(probe!==updateProbe||!updateRegistration||worker!==updateRegistration.waiting)return;
+   var v=e.data&&e.data.version;
+   if(!versionNewer(v,APP_VERSION)){updateCandidate=null;updateVersion='';if(manual)updateInfo('Установлена актуальная версия '+APP_VERSION+'.');else updateHide();return;}
+   updateCandidate=worker;updateVersion=v;
+   document.getElementById('updateVersion').textContent='Доступно обновление';
+   document.getElementById('updateDetail').textContent='Версия '+v;
+   document.getElementById('updateApply').hidden=false;
+   updateNotice('');document.getElementById('updatePanel').hidden=false;
+  };
+  worker.postMessage({type:'GET_VERSION'},[channel.port2]);
+ }catch(e){if(manual)updateInfo('Не удалось проверить версию.');}
 }
 async function checkUpdate(manual){
- if(!updateRegistration){if(manual)updateNotice('Механизм обновлений ещё не готов.');return;}
- if(!navigator.onLine){if(manual)updateNotice('Для проверки обновлений нужен интернет.');return;}
+ if(manual){updateDeferred=null;updateManual=true;updateInfo('Проверяем обновления…');}
+ if(!updateRegistration){if(manual)updateInfo('Механизм обновлений ещё не готов.');return;}
+ if(!navigator.onLine){if(manual)updateInfo('Для проверки обновлений нужен интернет.');return;}
  if(!manual&&Date.now()-updateCheckedAt<60000)return;
  updateCheckedAt=Date.now();
- if(manual){updateDeferred=null;document.getElementById('updatePanel').hidden=false;updateNotice('Проверяем обновления…');}
  try{
   await updateRegistration.update();
-  if(updateRegistration.waiting)updateShow(updateRegistration.waiting);
-  else if(manual)updateNotice(updateRegistration.installing?'Новая версия загружается…':'Установлена актуальная версия '+APP_VERSION+'.');
- }catch(e){if(manual)updateNotice('Не удалось проверить обновления. Повторите позже.');}
+  if(updateRegistration.waiting)updateShow(updateRegistration.waiting,manual);
+  else if(manual)updateInfo(updateRegistration.installing?'Новая версия загружается…':'Установлена актуальная версия '+APP_VERSION+'.');
+ }catch(e){if(manual)updateInfo('Не удалось проверить обновления. Повторите позже.');}
 }
-document.getElementById('updateLater').onclick=function(){updateDeferred=updateCandidate;document.getElementById('updatePanel').hidden=true;};
+document.getElementById('updateLater').onclick=function(){updateProbe++;updateDeferred=updateCandidate||(updateRegistration&&updateRegistration.waiting);updateManual=false;updateHide();};
 document.getElementById('updateCheck').onclick=function(){checkUpdate(true);};
 document.getElementById('updateApply').onclick=async function(){
  if(updateApplying)return;
  var worker=updateRegistration&&updateRegistration.waiting;
- if(!worker){updateNotice('Обновление ещё не загружено.');return;}
+ if(!worker||worker!==updateCandidate||!versionNewer(updateVersion,APP_VERSION)){updateNotice('Нет готового обновления.');return;}
  var reason=updateBlocked();if(reason){updateNotice(reason);return;}
  updateApplying=true;
  var main=document.querySelector('main');main.setAttribute('inert','');main.style.pointerEvents='none';
@@ -446,9 +467,9 @@ if('serviceWorker' in navigator){
  navigator.serviceWorker.addEventListener('controllerchange',function(){if(updateApplying)location.reload();});
  navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(function(reg){
   updateRegistration=reg;
-  function watch(worker){if(!worker)return;worker.addEventListener('statechange',function(){if(worker.state==='installed'&&reg.waiting)updateShow(reg.waiting);});}
+  function watch(worker){if(!worker)return;worker.addEventListener('statechange',function(){if(worker.state==='installed'&&reg.waiting){updateShow(reg.waiting,updateManual);updateManual=false;}});}
   reg.addEventListener('updatefound',function(){watch(reg.installing);});
-  watch(reg.installing);if(reg.waiting)updateShow(reg.waiting);
+  watch(reg.installing);if(reg.waiting)updateShow(reg.waiting,false);
   checkUpdate(false);
  }).catch(function(){});
  window.addEventListener('online',function(){checkUpdate(false);});

@@ -1,5 +1,5 @@
 /* Versioned atomic app shell. Never touch IndexedDB or pending operation data. */
-const VERSION='1.3.26';
+const VERSION='1.3.27';
 const SHELL_CACHE='cr-inventory-pwa-v'+VERSION;
 const DECODER_CACHE='cr-inventory-zxing-v1';
 const SHELL=['index.html','app.js','icon.png','manifest.webmanifest','version.json'];
