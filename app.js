@@ -1,7 +1,7 @@
 
 (function(){
 'use strict';
-var APP_VERSION='1.3.30',pendingWrites=0,pendingCalls=0,pendingRpc=0,updateApplying=false,updateRegistration=null,updateCandidate=null,updateDeferred=null,updateCheckedAt=0,storageReady=false;
+var APP_VERSION='1.3.31',pendingWrites=0,pendingCalls=0,pendingRpc=0,updateApplying=false,updateRegistration=null,updateCandidate=null,updateDeferred=null,updateCheckedAt=0,storageReady=false;
 var inventorySession='',inventoryName='',canManageBarcodes=false;
 var state={secret:'',bridgeUrl:'',inventoryDeviceId:'',snapshot:null,queue:[],conflict:''},db,storeKey='inventory',syncing=false,ui,active=true;
 function inventoryCreateDeviceId(){
